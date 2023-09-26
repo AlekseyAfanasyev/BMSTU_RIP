@@ -1,0 +1,24 @@
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="/css/style.css">
+</head>
+<body>
+<div class="header">
+    <h1> {{ .Title }} </h1>
+</div>
+<div class="card-sub">
+    <div class="card-content-sub">
+        <img src="{{ .Image }}" class="card_image-sub">
+        <div class="right-content-sub">
+            <p><span class="passport-label">Серия и номер паспорта:</span> {{ .Seria }}</p>
+            <p><span class="passport-label">Дата выдачи: </span>{{ .Issue }}</p>
+            <p><span class="passport-label">Код подразделения: </span>{{ .Code }}</p>
+            <p><span class="passport-label">Пол: </span>{{ .Gender }}</p>
+            <p><span class="passport-label">Дата рождения: </span>{{ .Birthdate }}</p>
+            <p><span class="passport-label">Место рождения: </span>{{ .BDplace }}</p>
+        </div>
+    </div>
+    <a class="button" href="../home">Назад</a>
+</div>
+</body>
+</html>
