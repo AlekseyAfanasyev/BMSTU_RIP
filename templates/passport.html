@@ -4,12 +4,13 @@
 </head>
 <body>
 <div class="header">
-    <h1> {{ .Title }} </h1>
+    <h1> {{ .Name }} </h1>
 </div>
 <div class="card-sub">
     <div class="card-content-sub">
-        <img src="{{ .Image }}" class="card_image-sub">
+        <img src="data:image/jpeg;base64, {{ .Image }}" class="card_image-sub">
         <div class="right-content-sub">
+            <p><span class="passport-label">Статус:</span> {{if eq .IsFree true}} Присутствует {{else}} Отсутствует {{end}}</p>
             <p><span class="passport-label">Серия и номер паспорта:</span> {{ .Seria }}</p>
             <p><span class="passport-label">Дата выдачи: </span>{{ .Issue }}</p>
             <p><span class="passport-label">Код подразделения: </span>{{ .Code }}</p>
@@ -18,7 +19,7 @@
             <p><span class="passport-label">Место рождения: </span>{{ .BDplace }}</p>
         </div>
     </div>
-    <a class="button" href="../home">Назад</a>
+    <a class="button" href="..">Назад</a>
 </div>
 </body>
 </html>

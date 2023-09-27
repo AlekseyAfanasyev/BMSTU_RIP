@@ -1,12 +1,15 @@
 package main
 
 import (
-	"BMSTU_RIP/internal/api"
+	"BMSTU_RIP/internal/pkg/app"
 	"log"
 )
 
 func main() {
-	log.Println("Application starts!")
-	api.StartServer()
+	log.Println("Application start!")
+
+	a := app.New()
+	a.StartServer()
+
 	log.Println("Application terminated!")
 }

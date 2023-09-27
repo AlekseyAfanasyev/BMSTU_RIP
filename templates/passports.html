@@ -7,19 +7,26 @@
     <h1> База паспортов </h1>
 </div>
 <div class="search-form">
-    <form action="/home" method="GET">
-        <input type="text" name="query" placeholder="Поиск гражданина в системе">
-        <button type="submit">Найти</button>
+    <form method="GET" action="" name="search">
+        <input type="text" id="passport_name" name="passport_name" value="{{ .passportName }}" placeholder="Поиск гражданина в системе">
+        <input type="submit" class="button" value="Поиск">
     </form>
 </div>
 <div class="card_group">
     {{ range .passports }}
     <div class="card">
-        <h5 class="card_title">{{ .Title }}</h5>
+        <h5 class="card_title">{{ .Name }}</h5>
         <div class="image-container">
-            <img class="card_image" src="{{ .Image }}" alt="Изображение">
+            <img class="card_image" src="data:image/jpeg;base64, {{ .Image }}" alt="Изображение">
         </div>
-        <a class="button" href="home/{{ .OneCard }}">Подробнее</a>
+        <div class="card_title">
+            {{if eq .IsFree true}} Присутствует {{else}} Отсутствует {{end}}
+        </div>
+        <a class="button" href="{{ .Name }}">Подробнее</a>
+        <form method="POST" action="delete_passport/{{ .Name }}" name="passport_orbit">
+            <input type="hidden" name="card_title" id="card_title" value="{{ .Name }}">
+            <input type="submit" class="button" value="Изменить статус">
+        </form>
     </div>
     {{ end }}
 </div>
