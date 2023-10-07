@@ -58,7 +58,7 @@ func (a *Application) loadGeneral(c *gin.Context) {
 	passportName := c.Query("passport_name")
 
 	if passportName == "" {
-		log.Println("ALL ORBITS 1")
+		log.Println("ALL PASSPORTS 1")
 
 		allPassports, err := a.repo.GetAllPassports()
 

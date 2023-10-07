@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// пакет отвечающий за обращения к хранилищам данных(БД)
 type Repository struct {
 	db *gorm.DB
 }

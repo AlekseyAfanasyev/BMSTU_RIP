@@ -23,7 +23,7 @@
             {{if eq .IsFree true}} Присутствует {{else}} Отсутствует {{end}}
         </div>
         <a class="button" href="{{ .Name }}">Подробнее</a>
-        <form method="POST" action="delete_passport/{{ .Name }}" name="passport_orbit">
+        <form method="POST" action="delete_passport/{{ .Name }}" name="passport_name">
             <input type="hidden" name="card_title" id="card_title" value="{{ .Name }}">
             <input type="submit" class="button" value="Изменить статус">
         </form>

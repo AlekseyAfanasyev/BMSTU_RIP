@@ -1,49 +1,44 @@
 package ds
 
 import (
-	"gorm.io/datatypes"
+	"time"
 )
 
 type Users struct {
-	ID      uint `gorm:"primaryKey"`
-	IsModer bool
-	Name    string
+	ID      uint   `gorm:"primaryKey;AUTO_INCREMENT"`
+	IsModer bool   `gorm:"not null"`
+	Name    string `gorm:"type:varchar(50);unique;not null"`
 }
 
 type BorderCrossingFacts struct {
-	ID                    uint `gorm:"primaryKey"`
+	ID                    uint `gorm:"primaryKey;AUTO_INCREMENT"`
 	ClientRefer           int
 	Client                Users `gorm:"foreignKey:ClientRefer"`
 	ModerRefer            int
 	Moder                 Users `gorm:"foreignKey:ModerRefer"`
 	StatusRefer           int
-	Status                RequestStatus `gorm:"foreignKey:StatusRefer"`
-	BorderCrossingPurpose string
-	DateCreated           datatypes.Date
-	DateProcessed         datatypes.Date
-	DateFinished          datatypes.Date
-}
-
-type RequestStatus struct {
-	ID     uint `gorm:"primaryKey"`
-	Status string
+	Status                string    `gorm:"type:varchar(20);not null"`
+	BorderCrossingPurpose string    `gorm:"type:varchar(50)"`
+	DateCreated           time.Time `gorm:"type:timestamp"`
+	DateProcessed         time.Time `gorm:"type:timestamp"`
+	DateFinished          time.Time `gorm:"type:timestamp"`
 }
 
 type Passports struct {
-	ID        uint `gorm:"primaryKey"`
-	Name      string
+	ID        uint   `gorm:"primaryKey;AUTO_INCREMENT"`
+	Name      string `gorm:"type:varchar(50)"`
 	IsFree    bool
-	Seria     string
-	Issue     string
-	Code      string
-	Gender    string
-	Birthdate string
-	BDplace   string
+	Seria     string `gorm:"type:varchar(20)"`
+	Issue     string `gorm:"type:varchar(50)"`
+	Code      string `gorm:"type:varchar(20)"`
+	Gender    string `gorm:"type:varchar(20)"`
+	Birthdate string `gorm:"type:varchar(20)"`
+	BDplace   string `gorm:"type:varchar(50)"`
 	Image     string `gorm:"type:bytea"`
 }
 
 type BorderCrossingPassports struct {
-	ID            uint `gorm:"primaryKey"`
+	ID            uint `gorm:"primaryKey;AUTO_INCREMENT"`
 	RequestRefer  int
 	Request       BorderCrossingFacts `gorm:"foreignKey:RequestRefer"`
 	PassportRefer int
