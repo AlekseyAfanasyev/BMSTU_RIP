@@ -5,8 +5,8 @@ import (
 )
 
 type Users struct {
-	ID      uint   `gorm:"primaryKey;AUTO_INCREMENT"`
-	IsModer bool   `gorm:"not null"`
+	ID      uint `gorm:"primaryKey;AUTO_INCREMENT"`
+	IsModer *bool
 	Name    string `gorm:"type:varchar(50);unique;not null"`
 }
 
@@ -15,13 +15,12 @@ type BorderCrossingFacts struct {
 	ClientRefer           int
 	Client                Users `gorm:"foreignKey:ClientRefer"`
 	ModerRefer            int
-	Moder                 Users `gorm:"foreignKey:ModerRefer"`
-	StatusRefer           int
-	Status                string    `gorm:"type:varchar(20);not null"`
-	BorderCrossingPurpose string    `gorm:"type:varchar(50)"`
-	DateCreated           time.Time `gorm:"type:timestamp"`
-	DateProcessed         time.Time `gorm:"type:timestamp"`
-	DateFinished          time.Time `gorm:"type:timestamp"`
+	Moder                 Users      `gorm:"foreignKey:ModerRefer"`
+	Status                string     `gorm:"type:varchar(20);not null"`
+	BorderCrossingPurpose string     `gorm:"type:varchar(50)"`
+	DateCreated           time.Time  `gorm:"type:timestamp"`
+	DateProcessed         *time.Time `gorm:"type:timestamp"`
+	DateFinished          *time.Time `gorm:"type:timestamp"`
 }
 
 type Passports struct {
@@ -38,9 +37,17 @@ type Passports struct {
 }
 
 type BorderCrossingPassports struct {
-	ID            uint `gorm:"primaryKey;AUTO_INCREMENT"`
+	ID            int `gorm:"primaryKey;AUTO_INCREMENT"`
 	RequestRefer  int
 	Request       BorderCrossingFacts `gorm:"foreignKey:RequestRefer"`
 	PassportRefer int
 	Passport      Passports `gorm:"foreignKey:PassportRefer"`
 }
+
+type ChangeBorderCrossingFactStatus struct {
+	BorderCrossingFactID uint
+	Status               string
+	UserName             string
+}
+
+var ReqStatuses = []string{"Черновик", "Удалена", "Отклонена", "Оказана", "На рассмотрении"}
