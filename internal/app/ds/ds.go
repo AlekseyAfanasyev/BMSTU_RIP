@@ -5,9 +5,10 @@ import (
 )
 
 type Users struct {
-	ID      uint `gorm:"primaryKey;AUTO_INCREMENT"`
-	IsModer *bool
-	Name    string `gorm:"type:varchar(50);unique;not null"`
+	ID       uint `gorm:"primaryKey;AUTO_INCREMENT"`
+	IsModer  *bool
+	Name     string `gorm:"type:varchar(50);unique;not null"`
+	Password string `gorm:"type:varchar(50);not null"`
 }
 
 type BorderCrossingFacts struct {
@@ -33,7 +34,7 @@ type Passports struct {
 	Gender    string `gorm:"type:varchar(20)"`
 	Birthdate string `gorm:"type:varchar(20)"`
 	BDplace   string `gorm:"type:varchar(50)"`
-	Image     string `gorm:"type:bytea"`
+	Image     string `gorm:"column:image"`
 }
 
 type BorderCrossingPassports struct {

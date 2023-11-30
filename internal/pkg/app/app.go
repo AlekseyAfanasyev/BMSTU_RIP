@@ -41,10 +41,10 @@ func (a *Application) StartServer() {
 	a.r.GET("border_crossing_facts", a.getAllRequests)
 	a.r.GET("border_crossing_facts/id/:req_id", a.getDetailedRequest)
 
-	a.r.PUT("passports/add_new_passport", a.newPassport)
 	a.r.PUT("passports/:passport_seria/edit", a.editPassport)
 	a.r.PUT("border_crossing_fact/:req_id/moder_change_status", a.moderChangeTransferRequestStatus)
 
+	a.r.POST("passports/add_new_passport", a.newPassport)
 	a.r.POST("border_crossing_fp/:req_id/delete", a.deleteBorderCrossingFactRequest)
 	a.r.POST("/:passport_seria/add", a.addPassportToRequest)
 	a.r.POST("change_passport_availibility/:passport_name", a.changeAvailability)
@@ -173,8 +173,7 @@ func (a *Application) newPassport(c *gin.Context) {
 		c.Error(err)
 	}
 
-	err := a.repo.AddPassport(requestBody.Name, requestBody.Seria, requestBody.Issue,
-		requestBody.Code, requestBody.Gender, requestBody.Birthdate, requestBody.BDplace, requestBody.Image)
+	err := a.repo.AddPassport(&requestBody, requestBody.Image)
 	log.Println(requestBody.Name, " is added")
 
 	if err != nil {
@@ -293,6 +292,7 @@ func (a *Application) moderChangeTransferRequestStatus(c *gin.Context) {
 		c.Error(err)
 		return
 	}
+	log.Println("REQ BODY: ", requestBody)
 
 	currRequest, err := a.repo.GetRequestByID(int(requestBody.BorderCrossingFactID))
 	if err != nil {

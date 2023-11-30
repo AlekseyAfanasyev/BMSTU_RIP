@@ -17,7 +17,7 @@
     <div class="card">
         <h5 class="card_title">{{ .Name }}</h5>
         <div class="image-container">
-            <img class="card_image" src="data:image/jpeg;base64, {{ .Image }}" alt="Изображение">
+            <img class="card_image" src="{{ .Image }}" alt="{{ .Name }}">
         </div>
         <div class="card_title">
             {{if eq .IsFree true}} Присутствует {{else}} Отсутствует {{end}}

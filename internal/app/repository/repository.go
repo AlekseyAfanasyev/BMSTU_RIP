@@ -2,10 +2,17 @@ package repository
 
 import (
 	"BMSTU_RIP/internal/app/ds"
+	mClient "BMSTU_RIP/internal/app/minio"
+	"context"
+	"fmt"
+	"github.com/minio/minio-go/v7"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"log"
 	"math/rand"
+	"os"
+	_ "os"
+	"strings"
 	"time"
 )
 
@@ -17,7 +24,19 @@ type Repository struct {
 func New(dsn string) (*Repository, error) {
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
+		log.Printf("Failed to connect to the database: %v", err)
 		return nil, err
+	}
+
+	// Check the connection
+	if sqlDB, err := db.DB(); err != nil {
+		log.Printf("Failed to initialize the database connection: %v", err)
+		return nil, err
+	} else {
+		if err := sqlDB.Ping(); err != nil {
+			log.Printf("Failed to ping the database: %v", err)
+			return nil, err
+		}
 	}
 
 	return &Repository{
@@ -102,27 +121,121 @@ func (r *Repository) ChangeAvailability(passportName string) error {
 	return err
 }
 
-func (r *Repository) AddPassport(Name, Seria, Issue, Code, Gender, Birthdate, BDplace, Image string) error {
-	NewPassport := &ds.Passports{
-		ID:        uint(len([]ds.Passports{})),
-		Name:      Name,
-		IsFree:    false,
-		Seria:     Seria,
-		Issue:     Issue,
-		Code:      Code,
-		Gender:    Gender,
-		Birthdate: Birthdate,
-		BDplace:   BDplace,
-		Image:     Image,
+//func (r *Repository) AddPassport(Name, Seria, Issue, Code, Gender, Birthdate, BDplace, Image string) error {
+//	NewPassport := &ds.Passports{
+//		ID:        uint(len([]ds.Passports{})),
+//		Name:      Name,
+//		IsFree:    false,
+//		Seria:     Seria,
+//		Issue:     Issue,
+//		Code:      Code,
+//		Gender:    Gender,
+//		Birthdate: Birthdate,
+//		BDplace:   BDplace,
+//		Image:     Image,
+//	}
+//
+//	return r.db.Create(NewPassport).Error
+//}
+
+func (r *Repository) AddPassport(passport *ds.Passports, imagePath string) error {
+
+	imageURL := "http://127.0.0.1:9000/pc-bucket/DEFAULT.jpg"
+	log.Println(imagePath)
+	if imagePath != "" {
+		var err error
+		imageURL, err = r.uploadImageToMinio(imagePath)
+		if err != nil {
+			return err
+		}
+	}
+	var cntOrbits int64
+	err := r.db.Model(&ds.Passports{}).Count(&cntOrbits).Error
+	if err != nil {
+		log.Println(err)
+		return err
 	}
 
-	return r.db.Create(NewPassport).Error
+	passport.Image = imageURL
+
+	passport.ID = uint(cntOrbits) + 1
+
+	return r.db.Create(passport).Error
 }
 
-func (r *Repository) EditPassport(ID uint, passport ds.Passports) error {
-	log.Println("FUNC ORBIT: ", passport, "    ", ID)
-	return r.db.Model(&ds.Passports{}).Where("id = ?", ID).Updates(passport).Error
+func (r *Repository) EditPassport(passportID uint, editingPassport ds.Passports) error {
+	// Проверяем, изменился ли URL изображения
+	originalPassport, err := r.GetPassportByID(int(passportID))
+	if err != nil {
+		return err
+	}
+
+	log.Println("OLD IMAGE: ", originalPassport.Image)
+	log.Println("NEW IMAGE: ", editingPassport.Image)
+
+	if editingPassport.Image != originalPassport.Image && editingPassport.Image != "" {
+		log.Println("REPLACING IMAGE")
+		err := r.deleteImageFromMinio(originalPassport.Image)
+		if err != nil {
+			return err
+		}
+		imageURL, err := r.uploadImageToMinio(editingPassport.Image)
+		if err != nil {
+			return err
+		}
+
+		editingPassport.Image = imageURL
+
+		log.Println("IMAGE REPLACED")
+	}
+
+	return r.db.Model(&ds.Passports{}).Where("id = ?", passportID).Updates(editingPassport).Error
 }
+
+func (r *Repository) uploadImageToMinio(imagePath string) (string, error) {
+	// Получаем клиента Minio из настроек
+	minioClient := mClient.NewMinioClient()
+
+	// Загрузка изображения в Minio
+	file, err := os.Open(imagePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	// uuid - уникальное имя; parts - имя файла
+	//objectName := uuid.New().String() + ".jpg"
+	parts := strings.Split(imagePath, "/")
+	objectName := parts[len(parts)-1]
+
+	_, err = minioClient.PutObject(context.Background(), "pc-bucket", objectName, file, -1, minio.PutObjectOptions{})
+	if err != nil {
+		return "!!!", err
+	}
+
+	// Возврат URL изображения в Minio
+	log.Println("Error MINIO")
+	return fmt.Sprintf("http://%s/%s/%s", minioClient.EndpointURL().Host, "pc-bucket", objectName), nil
+}
+
+func (r *Repository) deleteImageFromMinio(imageURL string) error {
+	minioClient := mClient.NewMinioClient()
+
+	objectName := extractObjectNameFromURL(imageURL)
+
+	return minioClient.RemoveObject(context.Background(), "pc-bucket", objectName, minio.RemoveObjectOptions{})
+}
+
+func extractObjectNameFromURL(imageURL string) string {
+	parts := strings.Split(imageURL, "/")
+	log.Println("\n\nIMG:   ", parts[len(parts)-1])
+	return parts[len(parts)-1]
+}
+
+//func (r *Repository) EditPassport(ID uint, passport ds.Passports) error {
+//	log.Println("FUNC ORBIT: ", passport, "    ", ID)
+//	return r.db.Model(&ds.Passports{}).Where("id = ?", ID).Updates(passport).Error
+//}
 
 func (r *Repository) GetPassportBySeria(seria string) (*ds.Passports, error) {
 	passport := &ds.Passports{}
