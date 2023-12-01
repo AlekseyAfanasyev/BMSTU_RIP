@@ -1,8 +1,17 @@
 package ds
 
 import (
+	"BMSTU_RIP/internal/app/role"
+	"github.com/google/uuid"
 	"time"
 )
+
+type UserUID struct {
+	UUID uuid.UUID `gorm:"type:uuid"`
+	Name string    `json:"name"`
+	Role role.Role `sql:"type:string;"`
+	Pass string
+}
 
 type Users struct {
 	ID       uint `gorm:"primaryKey;AUTO_INCREMENT"`

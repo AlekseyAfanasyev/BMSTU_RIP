@@ -5,6 +5,7 @@ import (
 	mClient "BMSTU_RIP/internal/app/minio"
 	"context"
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -391,4 +392,23 @@ func (r *Repository) GetUserByName(name string) (*ds.Users, error) {
 	}
 
 	return user, nil
+}
+
+func (r *Repository) GetUserByLogin(name string) (*ds.UserUID, error) {
+	user := &ds.UserUID{}
+
+	err := r.db.First(user, "name = ?", name).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func (r *Repository) Register(user *ds.UserUID) error {
+	if user.UUID == uuid.Nil {
+		user.UUID = uuid.New()
+	}
+
+	return r.db.Create(user).Error
 }
