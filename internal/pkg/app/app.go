@@ -66,49 +66,61 @@ func (a *Application) StartServer() {
 	log.Println("Server is down")
 }
 
+//func (a *Application) getAllPassports(c *gin.Context) {
+//	passportName := c.Query("passport_name")
+//
+//	if passportName == "" {
+//		log.Println("ALL Passports 1")
+//
+//		allPassports, err := a.repo.GetAllPassports()
+//
+//		if err != nil {
+//			c.Error(err)
+//		}
+//
+//		//для лаб3 нужен хтмл
+//		//c.HTML(http.StatusOK, "passports.html", gin.H{
+//		//	"passports": a.repo.FilterPassports(allPassports),
+//		//})
+//
+//		//для лаб4 нужен жсон
+//		c.JSON(http.StatusOK, gin.H{
+//			"passports": a.repo.FilterPassports(allPassports),
+//		})
+//	} else {
+//		log.Println("!!! SEARCHING Passports !!!")
+//
+//		foundPassports, err := a.repo.SearchPassports(passportName)
+//		if err != nil {
+//			c.Error(err)
+//			return
+//		}
+//		log.Println("found: ", len(foundPassports))
+//
+//		//для лаб3 нужен хтмл
+//		//c.HTML(http.StatusOK, "passports.html", gin.H{
+//		//	"passports":    a.repo.FilterPassports(foundPassports),
+//		//	"passportName": passportName,
+//		//})
+//
+//		//для лаб4 нужен жсон
+//		c.JSON(http.StatusOK, gin.H{
+//			"passports":    a.repo.FilterPassports(foundPassports),
+//			"passportName": passportName,
+//		})
+//	}
+//}
+
 func (a *Application) getAllPassports(c *gin.Context) {
 	passportName := c.Query("passport_name")
 
-	if passportName == "" {
-		log.Println("ALL Passports 1")
+	allPassports, err := a.repo.GetAllPassports(passportName)
 
-		allPassports, err := a.repo.GetAllPassports()
-
-		if err != nil {
-			c.Error(err)
-		}
-
-		//для лаб3 нужен хтмл
-		//c.HTML(http.StatusOK, "passports.html", gin.H{
-		//	"passports": a.repo.FilterPassports(allPassports),
-		//})
-
-		//для лаб4 нужен жсон
-		c.JSON(http.StatusOK, gin.H{
-			"passports": a.repo.FilterPassports(allPassports),
-		})
-	} else {
-		log.Println("!!! SEARCHING Passports !!!")
-
-		foundPassports, err := a.repo.SearchPassports(passportName)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		log.Println("found: ", len(foundPassports))
-
-		//для лаб3 нужен хтмл
-		//c.HTML(http.StatusOK, "passports.html", gin.H{
-		//	"passports":    a.repo.FilterPassports(foundPassports),
-		//	"passportName": passportName,
-		//})
-
-		//для лаб4 нужен жсон
-		c.JSON(http.StatusOK, gin.H{
-			"passports":    a.repo.FilterPassports(foundPassports),
-			"passportName": passportName,
-		})
+	if err != nil {
+		c.Error(err)
 	}
+
+	c.JSON(http.StatusFound, allPassports)
 }
 
 func (a *Application) getDetailedPassport(c *gin.Context) {
