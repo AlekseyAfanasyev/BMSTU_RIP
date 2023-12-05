@@ -61,16 +61,37 @@ func (r *Repository) DeletePassport(passport_name string) error {
 }
 
 // ---------------------------------------------------------------------------------
-// --------------------------------- ORBIT METHODS ---------------------------------
+// --------------------------------- PASSPORTS METHODS ---------------------------------
 // ---------------------------------------------------------------------------------
 
-func (r *Repository) GetAllPassports() ([]ds.Passports, error) {
+//func (r *Repository) GetAllPassports() ([]ds.Passports, error) {
+//	passports := []ds.Passports{}
+//
+//	err := r.db.Order("id").Find(&passports).Error
+//
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	return passports, nil
+//}
+
+func (r *Repository) GetAllPassports(passportName string) ([]ds.Passports, error) {
 	passports := []ds.Passports{}
+	if passportName == "" {
+		err := r.db.Where("is_free = ?", true).
+			Order("id").Find(&passports).Error
 
-	err := r.db.Order("id").Find(&passports).Error
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		err := r.db.Where("is_free = ?", true).Where("name ILIKE ?", "%"+passportName+"%").
+			Order("id").Find(&passports).Error
 
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return passports, nil

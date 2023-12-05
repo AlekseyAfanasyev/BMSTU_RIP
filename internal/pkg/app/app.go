@@ -1,6 +1,7 @@
 package app
 
 import (
+	"BMSTU_RIP/docs"
 	"BMSTU_RIP/internal/app/config"
 	"BMSTU_RIP/internal/app/ds"
 	"BMSTU_RIP/internal/app/dsn"
@@ -12,16 +13,17 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
 	"github.com/google/uuid"
+	swaggerfiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"log"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/gin-gonic/gin"
 )
 
 type Application struct {
@@ -83,6 +85,9 @@ func (a *Application) StartServer() {
 
 	a.r.LoadHTMLGlob("templates/*.html")
 	a.r.Static("/css", "./templates")
+
+	docs.SwaggerInfo.BasePath = "/"
+	a.r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
 
 	a.r.POST("/login", a.login)
 	a.r.POST("/sign_up", a.register)
@@ -273,51 +278,33 @@ func (a *Application) ping(gCtx *gin.Context) {
 	gCtx.String(http.StatusOK, "Hello %s", name)
 }
 
+// @Summary Получение всех паспортов
+// @Description Возвращает все доступные паспорта
+// @Tags Паспорта
+// @Accept json
+// @Produce json
+// @Success 302 {} json
+// @Param orbit_name query string false "Название паспорта или его часть"
+// @Router /passports [get]
 func (a *Application) getAllPassports(c *gin.Context) {
 	passportName := c.Query("passport_name")
 
-	if passportName == "" {
-		log.Println("ALL Passports 1")
+	allPassports, err := a.repo.GetAllPassports(passportName)
 
-		allPassports, err := a.repo.GetAllPassports()
-
-		if err != nil {
-			c.Error(err)
-		}
-
-		//для лаб3 нужен хтмл
-		//c.HTML(http.StatusOK, "passports.html", gin.H{
-		//	"passports": a.repo.FilterPassports(allPassports),
-		//})
-
-		//для лаб4 нужен жсон
-		c.JSON(http.StatusOK, gin.H{
-			"passports": a.repo.FilterPassports(allPassports),
-		})
-	} else {
-		log.Println("!!! SEARCHING Passports !!!")
-
-		foundPassports, err := a.repo.SearchPassports(passportName)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		log.Println("found: ", len(foundPassports))
-
-		//для лаб3 нужен хтмл
-		//c.HTML(http.StatusOK, "passports.html", gin.H{
-		//	"passports":    a.repo.FilterPassports(foundPassports),
-		//	"passportName": passportName,
-		//})
-
-		//для лаб4 нужен жсон
-		c.JSON(http.StatusOK, gin.H{
-			"passports":    a.repo.FilterPassports(foundPassports),
-			"passportName": passportName,
-		})
+	if err != nil {
+		c.Error(err)
 	}
+
+	c.JSON(http.StatusFound, allPassports)
 }
 
+// @Summary      Получение детализированной информации о паспорте
+// @Description  Возвращает подробную информацию о паспорте по его названию
+// @Tags         Паспорта
+// @Produce      json
+// @Param orbit_name path string true "Название паспорта"
+// @Success      200  {object}  string
+// @Router       /passports/{passport_name} [get]
 func (a *Application) getDetailedPassport(c *gin.Context) {
 	passport_name := c.Param("passport_name")
 

@@ -12,6 +12,45 @@ info:
   title: passports
   version: 0.0-0
 paths:
+  /passports:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает все доступные паспорта
+      parameters:
+      - description: Название паспорта или его часть
+        in: query
+        name: orbit_name
+        type: string
+      produces:
+      - application/json
+      responses:
+        "302":
+          description: Found
+          schema:
+            type: ""
+      summary: Получение всех паспортов
+      tags:
+      - Паспорта
+  /passports/{passport_name}:
+    get:
+      description: Возвращает подробную информацию о паспорте по его названию
+      parameters:
+      - description: Название паспорта
+        in: path
+        name: orbit_name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: Получение детализированной информации о паспорте
+      tags:
+      - Паспорта
   /ping/{name}:
     get:
       description: very friendly response

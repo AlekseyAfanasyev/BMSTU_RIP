@@ -15,6 +15,66 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/passports": {
+            "get": {
+                "description": "Возвращает все доступные паспорта",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Паспорта"
+                ],
+                "summary": "Получение всех паспортов",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Название паспорта или его часть",
+                        "name": "orbit_name",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "302": {
+                        "description": "Found",
+                        "schema": {
+                            "type": ""
+                        }
+                    }
+                }
+            }
+        },
+        "/passports/{passport_name}": {
+            "get": {
+                "description": "Возвращает подробную информацию о паспорте по его названию",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Паспорта"
+                ],
+                "summary": "Получение детализированной информации о паспорте",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Название паспорта",
+                        "name": "orbit_name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/ping/{name}": {
             "get": {
                 "description": "very friendly response",
