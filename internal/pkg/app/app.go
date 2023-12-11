@@ -126,6 +126,14 @@ func (a *Application) StartServer() {
 	log.Println("Server is down")
 }
 
+// @Summary Зарегистрировать нового пользователя
+// @Description Добавляет в БД нового пользователя
+// @Tags Аутентификация
+// @Produce json
+// @Accept json
+// @Success 200 {object} registerResp
+// @Param request_body body registerReq true "Данные для регистрации"
+// @Router /register [post]
 func (a *Application) register(gCtx *gin.Context) {
 	req := &registerReq{}
 
@@ -167,6 +175,14 @@ func generateHashString(s string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// @Summary Вход в систему
+// @Description Проверяет данные для входа и в случае успеха возвращает токен для входа
+// @Tags Аутентификация
+// @Produce json
+// @Accept json
+// @Success 200 {object} loginResp
+// @Param request_body body loginReq true "Данные для входа"
+// @Router /login [post]
 func (a *Application) login(gCtx *gin.Context) {
 	log.Println("login")
 	cfg := a.config
@@ -228,6 +244,13 @@ func (a *Application) login(gCtx *gin.Context) {
 	}
 }
 
+// @Summary Выйти из системы
+// @Details Деактивирует текущий токен пользователя, добавляя его в блэклист в редисе
+// @Tags Аутентификация
+// @Produce json
+// @Accept json
+// @Success 200
+// @Router /logout [post]
 func (a *Application) logout(gCtx *gin.Context) {
 	// получаем заголовок
 	jwtStr := gCtx.GetHeader("Authorization")
@@ -284,7 +307,7 @@ func (a *Application) ping(gCtx *gin.Context) {
 // @Accept json
 // @Produce json
 // @Success 302 {} json
-// @Param orbit_name query string false "Название паспорта или его часть"
+// @Param passport_name query string false "Название паспорта или его часть"
 // @Router /passports [get]
 func (a *Application) getAllPassports(c *gin.Context) {
 	passportName := c.Query("passport_name")
@@ -302,7 +325,7 @@ func (a *Application) getAllPassports(c *gin.Context) {
 // @Description  Возвращает подробную информацию о паспорте по его названию
 // @Tags         Паспорта
 // @Produce      json
-// @Param orbit_name path string true "Название паспорта"
+// @Param passport_name path string true "Название паспорта"
 // @Success      200  {object}  string
 // @Router       /passports/{passport_name} [get]
 func (a *Application) getDetailedPassport(c *gin.Context) {
@@ -360,6 +383,14 @@ func (a *Application) changeAvailability(c *gin.Context) {
 	c.Redirect(http.StatusFound, "/passports")
 }
 
+// @Summary      Добавление нового паспорта
+// @Description  Добавляет паспорт с полями, указанныим в JSON
+// @Tags Орбиты
+// @Accept json
+// @Produce      json
+// @Param passport body ds.Passports true "Данные нового паспорта"
+// @Success      201  {object}  string
+// @Router       /orbits/add_new_passport [post]
 func (a *Application) newPassport(c *gin.Context) {
 	var requestBody ds.Passports
 
@@ -388,6 +419,14 @@ func (a *Application) newPassport(c *gin.Context) {
 	})
 }
 
+// @Summary      Изменение паспорта
+// @Description  Обновляет данные о паспорте, основываясь на полях из JSON
+// @Tags         Паспорта
+// @Accept 		 json
+// @Produce      json
+// @Param passport body ds.Passports false "Паспорт"
+// @Success      201  {object}  string
+// @Router       /passports/{passport_seria}/edit [put]
 func (a *Application) editPassport(c *gin.Context) {
 	passport_seria := c.Param("passport_seria")
 	passport, err := a.repo.GetPassportBySeria(passport_seria)
@@ -418,6 +457,14 @@ func (a *Application) editPassport(c *gin.Context) {
 	})
 }
 
+// @Summary      Добавление паспорта в заявку
+// @Description  Создает заявку в статусе (или добавляет в открытую) и добавляет выбранный паспорт
+// @Tags Общее
+// @Accept json
+// @Produce      json
+// @Success      200  {object}  string
+// @Param Body body jsonMap true "Данные заказа"
+// @Router       /{passport_seria}/add [post]
 func (a *Application) addPassportToRequest(c *gin.Context) {
 	passport_seria := c.Param("passport_seria")
 	passport, err := a.repo.GetPassportBySeria(passport_seria)
@@ -452,6 +499,12 @@ func (a *Application) addPassportToRequest(c *gin.Context) {
 	}
 }
 
+// @Summary      Получение всех заявок
+// @Description  Получает все заявки
+// @Tags         Заявки
+// @Produce      json
+// @Success      200  {object}  string
+// @Router       /border_crossing_facts [get]
 func (a *Application) getAllRequests(c *gin.Context) {
 	requests, err := a.repo.GetAllRequests()
 
@@ -463,6 +516,13 @@ func (a *Application) getAllRequests(c *gin.Context) {
 	c.JSON(http.StatusFound, requests)
 }
 
+// @Summary      Получение детализированной заявки
+// @Description  Получает подробную информаицю о заявке
+// @Tags         Заявки
+// @Produce      json
+// @Param req_id path string true "ID заявки"
+// @Success      301  {object}  string
+// @Router       /border_crossing_facts/id/{req_id} [get]
 func (a *Application) getDetailedRequest(c *gin.Context) {
 	req_id, err := strconv.Atoi(c.Param("req_id"))
 	if err != nil {
@@ -531,6 +591,13 @@ func (a *Application) moderChangeTransferRequestStatus(c *gin.Context) {
 	}
 }
 
+// @Summary      Логическое удаление заявки
+// @Description  Изменяет статус заявки на "Удалена"
+// @Tags         Заявки
+// @Produce      json
+// @Success      200  {object}  string
+// @Param req_id path string true "ID заявки"
+// @Router /border_crossing_fp/{req_id}/delete [post]
 func (a *Application) deleteBorderCrossingFactRequest(c *gin.Context) {
 	req_id, err1 := strconv.Atoi(c.Param("req_id"))
 	if err1 != nil {
