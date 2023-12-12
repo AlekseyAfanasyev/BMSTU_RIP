@@ -90,7 +90,7 @@ func (a *Application) StartServer() {
 	a.r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
 
 	a.r.POST("/login", a.login)
-	a.r.POST("/sign_up", a.register)
+	a.r.POST("/register", a.register)
 	a.r.POST("/logout", a.logout)
 
 	a.r.GET("passports", a.getAllPassports)
@@ -223,6 +223,10 @@ func (a *Application) login(gCtx *gin.Context) {
 
 			return
 		}
+
+		//httpOnly=true, secure=true -> не могу читать куки на фронте ...
+		gCtx.SetCookie("passports-api-token", "Bearer "+strToken, int(time.Now().Add(time.Second*3600).
+			Unix()), "", "", false, false)
 
 		gCtx.JSON(http.StatusOK, loginResp{
 			Username:    user.Name,
