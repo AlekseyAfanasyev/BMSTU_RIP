@@ -39,15 +39,17 @@ type loginReq struct {
 type loginResp struct {
 	Username    string
 	Role        role.Role
-	ExpiresIn   time.Duration `json:"expires_in"`
-	AccessToken string        `json:"access_token"`
-	TokenType   string        `json:"token_type"`
+	ExpiresIn   int    `json:"expires_in"`
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
 }
 
 type registerReq struct {
 	Name string `json:"name"` // лучше назвать то же самое что login
 	Pass string `json:"pass"`
 }
+
+type jsonMap map[string]string
 
 type registerResp struct {
 	Ok bool `json:"ok"`
@@ -227,7 +229,7 @@ func (a *Application) login(gCtx *gin.Context) {
 			Role:        user.Role,
 			AccessToken: strToken,
 			TokenType:   "Bearer",
-			ExpiresIn:   cfg.JWT.ExpiresIn,
+			ExpiresIn:   int(cfg.JWT.ExpiresIn.Seconds()),
 		})
 
 		gCtx.AbortWithStatus(http.StatusOK)
@@ -436,7 +438,7 @@ func (a *Application) editPassport(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	c.JSON(http.StatusCreated, gin.H{
 		"ID":        editingPassport.ID,
 		"Name":      editingPassport.Name,
 		"Seria":     editingPassport.Seria,
