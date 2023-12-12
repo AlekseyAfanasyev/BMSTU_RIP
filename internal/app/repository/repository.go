@@ -3,7 +3,10 @@ package repository
 import (
 	"BMSTU_RIP/internal/app/ds"
 	mClient "BMSTU_RIP/internal/app/minio"
+	"BMSTU_RIP/internal/app/role"
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
@@ -197,9 +200,12 @@ func (r *Repository) EditPassport(passportID uint, editingPassport ds.Passports)
 
 	if editingPassport.Image != originalPassport.Image && editingPassport.Image != "" {
 		log.Println("REPLACING IMAGE")
-		err := r.deleteImageFromMinio(originalPassport.Image)
-		if err != nil {
-			return err
+
+		if originalPassport.Image != "http://127.0.0.1:9000/pc-bucket/DEFAULT.jpg" {
+			err := r.deleteImageFromMinio(originalPassport.Image)
+			if err != nil {
+				return err
+			}
 		}
 		imageURL, err := r.uploadImageToMinio(editingPassport.Image)
 		if err != nil {
@@ -323,11 +329,26 @@ func (r *Repository) GetCurrentRequest(client_refer int) (*ds.BorderCrossingFact
 	return request, nil
 }
 
-func (r *Repository) GetAllRequests() ([]ds.BorderCrossingFacts, error) {
+func (r *Repository) GetAllRequests(userRole any, dateStart, dateFin string) ([]ds.BorderCrossingFacts, error) {
 
 	requests := []ds.BorderCrossingFacts{}
+	qry := r.db
 
-	err := r.db.
+	if dateStart != "" && dateFin != "" {
+		qry = qry.Where("date_processed BETWEEN ? AND ?", dateStart, dateFin)
+	} else if dateStart != "" {
+		qry = qry.Where("date_processed >= ?", dateStart)
+	} else if dateFin != "" {
+		qry = qry.Where("date_processed <= ?", dateFin)
+	}
+
+	if userRole == role.Moderator {
+		qry = qry.Where("status = ?", ds.ReqStatuses[4])
+	} else {
+		qry = qry.Where("status IN ?", ds.ReqStatuses[:2])
+	}
+
+	err := qry.
 		Preload("Client").Preload("Moder"). //данные для полей типа User: {ID, Name, IsModer)
 		Order("id").
 		Find(&requests).Error
@@ -432,4 +453,10 @@ func (r *Repository) Register(user *ds.UserUID) error {
 	}
 
 	return r.db.Create(user).Error
+}
+
+func (r *Repository) GenerateHashString(s string) string {
+	h := sha1.New()
+	h.Write([]byte(s))
+	return hex.EncodeToString(h.Sum(nil))
 }

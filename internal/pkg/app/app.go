@@ -9,8 +9,6 @@ import (
 	"BMSTU_RIP/internal/app/repository"
 	"BMSTU_RIP/internal/app/role"
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
@@ -34,8 +32,8 @@ type Application struct {
 }
 
 type loginReq struct {
-	Login string `json:"login"`
-	Pass  string `json:"password"`
+	Login    string `json:"login"`
+	Password string `json:"password"`
 }
 
 type loginResp struct {
@@ -155,9 +153,9 @@ func (a *Application) register(gCtx *gin.Context) {
 
 	err = a.repo.Register(&ds.UserUID{
 		UUID: uuid.New(),
-		Role: role.User,
+		Role: role.Client,
 		Name: req.Name,
-		Pass: generateHashString(req.Pass), // пароли делаем в хешированном виде и далее будем сравнивать хеши, чтобы их не угнали с базой вместе
+		Pass: a.repo.GenerateHashString(req.Pass), // пароли делаем в хешированном виде и далее будем сравнивать хеши, чтобы их не угнали с базой вместе
 	})
 	if err != nil {
 		gCtx.AbortWithError(http.StatusInternalServerError, err)
@@ -167,12 +165,6 @@ func (a *Application) register(gCtx *gin.Context) {
 	gCtx.JSON(http.StatusOK, &registerResp{
 		Ok: true,
 	})
-}
-
-func generateHashString(s string) string {
-	h := sha1.New()
-	h.Write([]byte(s))
-	return hex.EncodeToString(h.Sum(nil))
 }
 
 // @Summary Вход в систему
@@ -203,7 +195,7 @@ func (a *Application) login(gCtx *gin.Context) {
 		return
 	}
 
-	if req.Login == user.Name && user.Pass == generateHashString(req.Pass) {
+	if req.Login == user.Name && user.Pass == a.repo.GenerateHashString(req.Password) {
 		// значит проверка пройдена
 		log.Println("проверка пройдена")
 		// генерируем ему jwt
@@ -213,7 +205,7 @@ func (a *Application) login(gCtx *gin.Context) {
 				IssuedAt:  time.Now().Unix(),
 				Issuer:    "web-admin",
 			},
-			UserUUID: uuid.New(), // test uuid
+			UserUUID: user.UUID,
 			Role:     user.Role,
 		})
 
@@ -506,7 +498,19 @@ func (a *Application) addPassportToRequest(c *gin.Context) {
 // @Success      200  {object}  string
 // @Router       /border_crossing_facts [get]
 func (a *Application) getAllRequests(c *gin.Context) {
-	requests, err := a.repo.GetAllRequests()
+	dateStart := c.Query("date_start")
+	dateFin := c.Query("date_fin")
+
+	userRole, exists := c.Get("role")
+	if !exists {
+		panic(exists)
+	}
+	//userUUID, exists := c.Get("userUUID")
+	//if !exists {
+	//	panic(exists)
+	//}
+
+	requests, err := a.repo.GetAllRequests(userRole, dateStart, dateFin)
 
 	if err != nil {
 		c.Error(err)
