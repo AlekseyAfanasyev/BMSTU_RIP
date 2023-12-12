@@ -37,19 +37,17 @@ type loginReq struct {
 }
 
 type loginResp struct {
-	Username    string
-	Role        role.Role
+	Login       string `json:"login"`
+	Role        int    `json:"role"`
 	ExpiresIn   int    `json:"expires_in"`
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`
 }
 
 type registerReq struct {
-	Name string `json:"name"` // лучше назвать то же самое что login
-	Pass string `json:"pass"`
+	Login    string `json:"login"`
+	Password string `json:"password"`
 }
-
-type jsonMap map[string]string
 
 type registerResp struct {
 	Ok bool `json:"ok"`
@@ -95,18 +93,26 @@ func (a *Application) StartServer() {
 
 	a.r.GET("passports", a.getAllPassports)
 	a.r.GET("passports/:passport_name", a.getDetailedPassport)
-	a.r.GET("border_crossing_facts", a.getAllRequests)
-	a.r.GET("border_crossing_facts/id/:req_id", a.getDetailedRequest)
 
-	a.r.PUT("passports/:passport_seria/edit", a.editPassport)
-	a.r.PUT("border_crossing_fact/:req_id/moder_change_status", a.moderChangeTransferRequestStatus)
+	clientMethods := a.r.Group("", a.WithAuthCheck(role.Client))
+	{
+		clientMethods.POST("/:passport_seria/add", a.addPassportToRequest)
+		clientMethods.POST("border_crossing_fp/:req_id/delete", a.deleteBorderCrossingFactRequest)
+	}
+	moderMethods := a.r.Group("", a.WithAuthCheck(role.Moderator))
+	{
+		moderMethods.PUT("passports/:passport_seria/edit", a.editPassport)
+		moderMethods.POST("passports/add_new_passport", a.newPassport)
+		moderMethods.POST("change_passport_availibility/:passport_name", a.changeAvailability)
+		moderMethods.GET("/ping", a.ping)
+	}
 
-	a.r.POST("passports/add_new_passport", a.newPassport)
-	a.r.POST("border_crossing_fp/:req_id/delete", a.deleteBorderCrossingFactRequest)
-	a.r.POST("/:passport_seria/add", a.addPassportToRequest)
-	a.r.POST("change_passport_availibility/:passport_name", a.changeAvailability)
-
-	a.r.Use(a.WithAuthCheck(role.Moderator)).GET("/ping", a.ping)
+	authorizedMethods := a.r.Group("", a.WithAuthCheck(role.Client, role.Moderator))
+	{
+		authorizedMethods.GET("/transfer_requests", a.getAllRequests)
+		authorizedMethods.GET("/transfer_requests/:req_id", a.getDetailedRequest)
+		authorizedMethods.PUT("/transfer_requests/change_status", a.changeRequestStatus)
+	}
 
 	a.r.POST("/delete_passport/:passport_name", func(c *gin.Context) {
 		passportName := c.Param("passport_name")
@@ -143,12 +149,12 @@ func (a *Application) register(gCtx *gin.Context) {
 		return
 	}
 
-	if req.Pass == "" {
+	if req.Password == "" {
 		gCtx.AbortWithError(http.StatusBadRequest, fmt.Errorf("pass is empty"))
 		return
 	}
 
-	if req.Name == "" {
+	if req.Login == "" {
 		gCtx.AbortWithError(http.StatusBadRequest, fmt.Errorf("name is empty"))
 		return
 	}
@@ -156,8 +162,8 @@ func (a *Application) register(gCtx *gin.Context) {
 	err = a.repo.Register(&ds.UserUID{
 		UUID: uuid.New(),
 		Role: role.Client,
-		Name: req.Name,
-		Pass: a.repo.GenerateHashString(req.Pass), // пароли делаем в хешированном виде и далее будем сравнивать хеши, чтобы их не угнали с базой вместе
+		Name: req.Login,
+		Pass: a.repo.GenerateHashString(req.Password), // пароли делаем в хешированном виде и далее будем сравнивать хеши, чтобы их не угнали с базой вместе
 	})
 	if err != nil {
 		gCtx.AbortWithError(http.StatusInternalServerError, err)
@@ -226,11 +232,11 @@ func (a *Application) login(gCtx *gin.Context) {
 
 		//httpOnly=true, secure=true -> не могу читать куки на фронте ...
 		gCtx.SetCookie("passports-api-token", "Bearer "+strToken, int(time.Now().Add(time.Second*3600).
-			Unix()), "", "", false, false)
+			Unix()), "", "", true, true)
 
 		gCtx.JSON(http.StatusOK, loginResp{
-			Username:    user.Name,
-			Role:        user.Role,
+			Login:       user.Name,
+			Role:        int(user.Role),
 			AccessToken: strToken,
 			TokenType:   "Bearer",
 			ExpiresIn:   int(cfg.JWT.ExpiresIn.Seconds()),
@@ -470,21 +476,14 @@ func (a *Application) addPassportToRequest(c *gin.Context) {
 		c.Error(err)
 		return
 	}
-	// вместо структуры для json использую map
-	// map: key-value
-	// jsonMap: string-int
-	// можно использовать string-interface{} (определяемый тип, в данном случае - пустой)
-	// тогда будет jsonMap["client_id"].int
-	var jsonMap map[string]int
 
-	if err = c.BindJSON(&jsonMap); err != nil {
-		c.Error(err)
-		return
+	userUUID, exists := c.Get("userUUID")
+	if !exists {
+		panic(exists)
 	}
-	log.Println("c_id: ", jsonMap)
 
 	request := &ds.BorderCrossingFacts{}
-	request, err = a.repo.CreateBorderCrossingRequest(jsonMap["client_id"])
+	request, err = a.repo.CreateBorderCrossingRequest(userUUID.(uuid.UUID))
 	if err != nil {
 		c.Error(err)
 		return
@@ -507,7 +506,7 @@ func (a *Application) getAllRequests(c *gin.Context) {
 	dateStart := c.Query("date_start")
 	dateFin := c.Query("date_fin")
 
-	userRole, exists := c.Get("role")
+	userRole, exists := c.Get("userRole")
 	if !exists {
 		panic(exists)
 	}
@@ -540,7 +539,7 @@ func (a *Application) getDetailedRequest(c *gin.Context) {
 		panic(err)
 	}
 
-	requests, err := a.repo.GetRequestByID(req_id)
+	requests, err := a.repo.GetRequestByID(uint(req_id))
 	if err != nil {
 		c.Error(err)
 		return
@@ -548,23 +547,24 @@ func (a *Application) getDetailedRequest(c *gin.Context) {
 
 	c.JSON(http.StatusFound, requests)
 }
-
-func (a *Application) moderChangeTransferRequestStatus(c *gin.Context) {
+func (a *Application) changeRequestStatus(c *gin.Context) {
 	var requestBody ds.ChangeBorderCrossingFactStatus
 
 	if err := c.BindJSON(&requestBody); err != nil {
 		c.Error(err)
 		return
 	}
-	log.Println("REQ BODY: ", requestBody)
 
-	currRequest, err := a.repo.GetRequestByID(int(requestBody.BorderCrossingFactID))
-	if err != nil {
-		c.Error(err)
-		return
+	userRole, exists := c.Get("userRole")
+	if !exists {
+		panic(exists)
+	}
+	userUUID, exists := c.Get("userUUID")
+	if !exists {
+		panic(exists)
 	}
 
-	currUser, err := a.repo.GetUserByName(requestBody.UserName)
+	currRequest, err := a.repo.GetRequestByID(requestBody.BorderCrossingFactID)
 	if err != nil {
 		c.Error(err)
 		return
@@ -575,13 +575,30 @@ func (a *Application) moderChangeTransferRequestStatus(c *gin.Context) {
 		return
 	}
 
-	if *currUser.IsModer != true {
-		c.String(http.StatusForbidden, "У пользователя должна быть роль модератора")
-		return
+	if userRole == role.Client {
+		if currRequest.ClientRefer == userUUID {
+			if slices.Contains(ds.ReqStatuses[:3], requestBody.Status) {
+				err = a.repo.ChangeRequestStatus(requestBody.BorderCrossingFactID, requestBody.Status)
+
+				if err != nil {
+					c.Error(err)
+					return
+				}
+
+				c.String(http.StatusCreated, "Текущий статус: ", requestBody.Status)
+				return
+			} else {
+				c.String(http.StatusForbidden, "Клиент не может установить статус ", requestBody.Status)
+				return
+			}
+		} else {
+			c.String(http.StatusForbidden, "Клиент не является ответственным")
+			return
+		}
 	} else {
-		if currRequest.ModerRefer == int(currUser.ID) {
-			if slices.Contains(ds.ReqStatuses[len(ds.ReqStatuses)-3:], requestBody.Status) {
-				err = a.repo.ChangeRequestStatus(int(requestBody.BorderCrossingFactID), requestBody.Status)
+		if currRequest.ModerRefer == userUUID {
+			if slices.Contains(ds.ReqStatuses[len(ds.ReqStatuses)-2:], requestBody.Status) {
+				err = a.repo.ChangeRequestStatus(requestBody.BorderCrossingFactID, requestBody.Status)
 
 				if err != nil {
 					c.Error(err)
@@ -608,6 +625,7 @@ func (a *Application) moderChangeTransferRequestStatus(c *gin.Context) {
 // @Success      200  {object}  string
 // @Param req_id path string true "ID заявки"
 // @Router /border_crossing_fp/{req_id}/delete [post]
+
 func (a *Application) deleteBorderCrossingFactRequest(c *gin.Context) {
 	req_id, err1 := strconv.Atoi(c.Param("req_id"))
 	if err1 != nil {

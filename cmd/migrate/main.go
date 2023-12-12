@@ -20,11 +20,6 @@ func main() {
 
 	// Migrate the schema
 
-	err = db.AutoMigrate(&ds.Users{})
-	if err != nil {
-		panic("cant migrate db")
-	}
-
 	err = db.AutoMigrate(&ds.BorderCrossingFacts{})
 	if err != nil {
 		panic("cant migrate db")

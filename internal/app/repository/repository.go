@@ -16,6 +16,7 @@ import (
 	"math/rand"
 	"os"
 	_ "os"
+	"slices"
 	"strings"
 	"time"
 )
@@ -276,48 +277,55 @@ func (r *Repository) GetPassportBySeria(seria string) (*ds.Passports, error) {
 	return passport, nil
 }
 
+func (r *Repository) DeleteBorderCrossingFactRequest(req_id uint) error {
+	if r.db.Where("id = ?", req_id).First(&ds.BorderCrossingFacts{}).Error != nil {
+
+		return r.db.Where("id = ?", req_id).First(&ds.BorderCrossingFacts{}).Error
+	}
+	return r.db.Model(&ds.BorderCrossingFacts{}).Where("id = ?", req_id).Update("status", "Удалена").Error
+}
+
 // =================================================================================
 // ---------------------------------------------------------------------------------
 // --------------------------- BORDER_CROSSING_FACTS METHODS ---------------------------
 // ---------------------------------------------------------------------------------
 
-func (r *Repository) CreateBorderCrossingRequest(client_refer int) (*ds.BorderCrossingFacts, error) {
-	//проверка есть ли открытая заявка у клиента
-	request, err := r.GetCurrentRequest(client_refer)
+func (r *Repository) CreateBorderCrossingRequest(client_id uuid.UUID) (*ds.BorderCrossingFacts, error) {
+	request, err := r.GetCurrentRequest(client_id)
 	if err != nil {
 		log.Println("NO OPENED REQUESTS => CREATING NEW ONE")
 
 		//назначение модератора
-		users := []ds.Users{}
-		err = r.db.Where("is_moder = ?", true).Find(&users).Error
+		moders := []ds.UserUID{}
+		err = r.db.Where("role = ?", 2).Find(&moders).Error
 		if err != nil {
 			return nil, err
 		}
-		n := rand.Int() % len(users)
-		moder_refer := users[n].ID
+		n := rand.Int() % len(moders)
+		moder_refer := moders[n].UUID
 		log.Println("moder: ", moder_refer)
 
 		//поля типа Users, связанные с передавыемыми значениями из функции
-		client := ds.Users{ID: uint(client_refer)}
-		moder := ds.Users{ID: moder_refer}
+		client := ds.UserUID{UUID: client_id}
+		moder := ds.UserUID{UUID: moder_refer}
 
-		NewBorderCrossingRequest := &ds.BorderCrossingFacts{
+		NewTransferRequest := &ds.BorderCrossingFacts{
 			ID:            uint(len([]ds.BorderCrossingFacts{})),
-			ClientRefer:   client_refer,
+			ClientRefer:   client_id,
 			Client:        client,
-			ModerRefer:    int(moder_refer),
+			ModerRefer:    moder_refer,
 			Moder:         moder,
 			Status:        "Черновик",
 			DateCreated:   time.Now(),
 			DateProcessed: nil,
 			DateFinished:  nil,
 		}
-		return NewBorderCrossingRequest, r.db.Create(NewBorderCrossingRequest).Error
+		return NewTransferRequest, r.db.Create(NewTransferRequest).Error
 	}
 	return request, nil
 }
 
-func (r *Repository) GetCurrentRequest(client_refer int) (*ds.BorderCrossingFacts, error) {
+func (r *Repository) GetCurrentRequest(client_refer uuid.UUID) (*ds.BorderCrossingFacts, error) {
 	request := &ds.BorderCrossingFacts{}
 	err := r.db.Where("status = ?", "Черновик").First(request, "client_refer = ?", client_refer).Error
 	//если реквеста нет => err = record not found
@@ -343,9 +351,9 @@ func (r *Repository) GetAllRequests(userRole any, dateStart, dateFin string) ([]
 	}
 
 	if userRole == role.Moderator {
-		qry = qry.Where("status = ?", ds.ReqStatuses[4])
+		qry = qry.Where("status = ?", ds.ReqStatuses[1])
 	} else {
-		qry = qry.Where("status IN ?", ds.ReqStatuses[:2])
+		qry = qry.Where("status IN ?", ds.ReqStatuses)
 	}
 
 	err := qry.
@@ -360,7 +368,7 @@ func (r *Repository) GetAllRequests(userRole any, dateStart, dateFin string) ([]
 	return requests, nil
 }
 
-func (r *Repository) GetRequestByID(id int) (*ds.BorderCrossingFacts, error) {
+func (r *Repository) GetRequestByID(id uint) (*ds.BorderCrossingFacts, error) {
 	request := &ds.BorderCrossingFacts{}
 
 	err := r.db.First(request, "id = ?", id).Error
@@ -371,16 +379,27 @@ func (r *Repository) GetRequestByID(id int) (*ds.BorderCrossingFacts, error) {
 	return request, nil
 }
 
-func (r *Repository) ChangeRequestStatus(id int, status string) error {
-	return r.db.Model(&ds.BorderCrossingFacts{}).Where("id = ?", id).Update("status", status).Error
-}
-
-func (r *Repository) DeleteBorderCrossingFactRequest(req_id uint) error {
-	if r.db.Where("id = ?", req_id).First(&ds.BorderCrossingFacts{}).Error != nil {
-
-		return r.db.Where("id = ?", req_id).First(&ds.BorderCrossingFacts{}).Error
+func (r *Repository) ChangeRequestStatus(id uint, status string) error {
+	if slices.Contains(ds.ReqStatuses[2:4], status) {
+		err := r.db.Model(&ds.BorderCrossingFacts{}).Where("id = ?", id).Update("date_finished", time.Now()).Error
+		if err != nil {
+			return err
+		}
 	}
-	return r.db.Model(&ds.BorderCrossingFacts{}).Where("id = ?", req_id).Update("status", "Удалена").Error
+
+	if status == ds.ReqStatuses[1] {
+		err := r.db.Model(&ds.BorderCrossingFacts{}).Where("id = ?", id).Update("date_processed", time.Now()).Error
+		if err != nil {
+			return err
+		}
+	}
+
+	err := r.db.Model(&ds.BorderCrossingFacts{}).Where("id = ?", id).Update("status", status).Error
+	if err != nil {
+		return fmt.Errorf("ошибка обновления статуса: %w", err)
+	}
+
+	return nil
 }
 
 // =================================================================================

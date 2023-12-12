@@ -8,29 +8,21 @@ import (
 
 type UserUID struct {
 	UUID uuid.UUID `gorm:"type:uuid"`
-	Name string    `json:"name"`
+	Name string    `json:"Name"`
 	Role role.Role `sql:"type:string;"`
 	Pass string
 }
 
-type Users struct {
-	ID       uint `gorm:"primaryKey;AUTO_INCREMENT"`
-	IsModer  *bool
-	Name     string `gorm:"type:varchar(50);unique;not null"`
-	Password string `gorm:"type:varchar(50);not null"`
-}
-
 type BorderCrossingFacts struct {
-	ID                    uint `gorm:"primaryKey;AUTO_INCREMENT"`
-	ClientRefer           int
-	Client                Users `gorm:"foreignKey:ClientRefer"`
-	ModerRefer            int
-	Moder                 Users      `gorm:"foreignKey:ModerRefer"`
-	Status                string     `gorm:"type:varchar(20);not null"`
-	BorderCrossingPurpose string     `gorm:"type:varchar(50)"`
-	DateCreated           time.Time  `gorm:"type:timestamp"`
-	DateProcessed         *time.Time `gorm:"type:timestamp"`
-	DateFinished          *time.Time `gorm:"type:timestamp"`
+	ID            uint       `gorm:"primaryKey;AUTO_INCREMENT"`
+	ClientRefer   uuid.UUID  `gorm:"type:uuid"`
+	Client        UserUID    `gorm:"foreignKey:ClientRefer;references:UUID"`
+	ModerRefer    uuid.UUID  `gorm:"type:uuid"`
+	Moder         UserUID    `gorm:"foreignKey:ModerRefer;references:UUID"`
+	Status        string     `gorm:"type:varchar(20); not null"`
+	DateCreated   time.Time  `gorm:"type:timestamp"` //timestamp without time zone
+	DateProcessed *time.Time `gorm:"type:timestamp"`
+	DateFinished  *time.Time `gorm:"type:timestamp"`
 }
 
 type Passports struct {
@@ -47,17 +39,21 @@ type Passports struct {
 }
 
 type BorderCrossingPassports struct {
-	ID            int `gorm:"primaryKey;AUTO_INCREMENT"`
-	RequestRefer  int
+	ID            uint `gorm:"primaryKey;AUTO_INCREMENT"`
+	RequestRefer  uint
 	Request       BorderCrossingFacts `gorm:"foreignKey:RequestRefer"`
-	PassportRefer int
+	PassportRefer uint
 	Passport      Passports `gorm:"foreignKey:PassportRefer"`
 }
 
 type ChangeBorderCrossingFactStatus struct {
 	BorderCrossingFactID uint
 	Status               string
-	UserName             string
 }
 
-var ReqStatuses = []string{"Черновик", "Удалена", "Отклонена", "Оказана", "На рассмотрении"}
+var ReqStatuses = []string{
+	"Черновик",
+	"На рассмотрении",
+	"Удалена",
+	"Отклонена",
+	"Оказана"}
