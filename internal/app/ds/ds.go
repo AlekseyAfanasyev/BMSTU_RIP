@@ -7,7 +7,7 @@ import (
 )
 
 type UserUID struct {
-	UUID uuid.UUID `gorm:"type:uuid"`
+	UUID uuid.UUID `gorm:"type:uuid;unique"`
 	Name string    `json:"Name"`
 	Role role.Role `sql:"type:string;"`
 	Pass string

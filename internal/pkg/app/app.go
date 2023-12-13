@@ -183,33 +183,27 @@ func (a *Application) register(gCtx *gin.Context) {
 // @Success 200 {object} loginResp
 // @Param request_body body loginReq true "Данные для входа"
 // @Router /login [post]
-func (a *Application) login(gCtx *gin.Context) {
-	log.Println("login")
+func (a *Application) login(c *gin.Context) {
 	cfg := a.config
 	req := &loginReq{}
-
-	err := json.NewDecoder(gCtx.Request.Body).Decode(req)
+	err := json.NewDecoder(c.Request.Body).Decode(req)
 	if err != nil {
-		gCtx.AbortWithError(http.StatusBadRequest, err)
+		c.AbortWithError(http.StatusBadRequest, err)
 
 		return
 	}
 
-	user, err := a.repo.GetUserByLogin(req.Login)
-	log.Println("найден челик", req.Login, "-->", user.Name)
+	user, err := a.repo.GetUserByName(req.Login)
 	if err != nil {
-		gCtx.AbortWithError(http.StatusInternalServerError, err)
+		c.AbortWithError(http.StatusInternalServerError, err)
 
 		return
 	}
 
 	if req.Login == user.Name && user.Pass == a.repo.GenerateHashString(req.Password) {
-		// значит проверка пройдена
-		log.Println("проверка пройдена")
-		// генерируем ему jwt
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, &ds.JWTClaims{
 			StandardClaims: jwt.StandardClaims{
-				ExpiresAt: time.Now().Add(time.Second * 3600).Unix(),
+				ExpiresAt: time.Now().Add(time.Second * 3600).Unix(), //1h
 				IssuedAt:  time.Now().Unix(),
 				Issuer:    "web-admin",
 			},
@@ -218,33 +212,33 @@ func (a *Application) login(gCtx *gin.Context) {
 		})
 
 		if token == nil {
-			gCtx.AbortWithError(http.StatusInternalServerError, fmt.Errorf("token is nil"))
+			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("Токен = nil"))
 
 			return
 		}
 
 		strToken, err := token.SignedString([]byte(cfg.JWT.Token))
 		if err != nil {
-			gCtx.AbortWithError(http.StatusInternalServerError, fmt.Errorf("cant create str token"))
+			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("Невозможно получить строку из токена"))
 
 			return
 		}
 
 		//httpOnly=true, secure=true -> не могу читать куки на фронте ...
-		gCtx.SetCookie("passports-api-token", "Bearer "+strToken, int(time.Now().Add(time.Second*3600).
+		c.SetCookie("orbits-api-token", "Bearer "+strToken, int(time.Now().Add(time.Second*3600).
 			Unix()), "", "", true, true)
 
-		gCtx.JSON(http.StatusOK, loginResp{
+		c.JSON(http.StatusOK, loginResp{
 			Login:       user.Name,
 			Role:        int(user.Role),
 			AccessToken: strToken,
 			TokenType:   "Bearer",
 			ExpiresIn:   int(cfg.JWT.ExpiresIn.Seconds()),
 		})
-
-		gCtx.AbortWithStatus(http.StatusOK)
+		log.Println("\nUSER: ", user.Name, "\n", strToken, "\n")
+		c.AbortWithStatus(http.StatusOK)
 	} else {
-		gCtx.AbortWithStatus(http.StatusForbidden) // отдаем 403 ответ в знак того что доступ запрещен
+		c.AbortWithStatus(http.StatusForbidden)
 	}
 }
 

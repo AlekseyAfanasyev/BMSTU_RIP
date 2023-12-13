@@ -412,11 +412,11 @@ func (r *Repository) AddRequestToBorderCrossingPassports(passport_refer, request
 	request := ds.BorderCrossingFacts{ID: uint(request_refer)}
 
 	NewMtM := &ds.BorderCrossingPassports{
-		ID:            int(uint(len([]ds.BorderCrossingPassports{}))),
+		ID:            uint(len([]ds.BorderCrossingPassports{})),
 		Passport:      passport,
-		PassportRefer: passport_refer,
+		PassportRefer: uint(passport_refer),
 		Request:       request,
-		RequestRefer:  request_refer,
+		RequestRefer:  uint(request_refer),
 	}
 	return r.db.Create(NewMtM).Error
 }
@@ -433,29 +433,7 @@ func (r *Repository) DeleteBorderCrossingPassportsEvery(transfer_id uint) error 
 // ------------------------- USERS METHODS ---------------------------
 // ---------------------------------------------------------------------------------
 
-func (r *Repository) GetUserRole(name string) (*bool, error) {
-	user := &ds.Users{}
-
-	err := r.db.First(user, "name = ?", name).Error
-	if err != nil {
-		return nil, err
-	}
-
-	return user.IsModer, nil
-}
-
-func (r *Repository) GetUserByName(name string) (*ds.Users, error) {
-	user := &ds.Users{}
-
-	err := r.db.First(user, "name = ?", name).Error
-	if err != nil {
-		return nil, err
-	}
-
-	return user, nil
-}
-
-func (r *Repository) GetUserByLogin(name string) (*ds.UserUID, error) {
+func (r *Repository) GetUserByName(name string) (*ds.UserUID, error) {
 	user := &ds.UserUID{}
 
 	err := r.db.First(user, "name = ?", name).Error
