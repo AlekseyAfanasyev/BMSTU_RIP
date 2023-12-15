@@ -290,28 +290,39 @@ func (r *Repository) DeleteBorderCrossingFactRequest(req_id uint) error {
 // --------------------------- BORDER_CROSSING_FACTS METHODS ---------------------------
 // ---------------------------------------------------------------------------------
 
-func (r *Repository) CreateBorderCrossingRequest(client_id uuid.UUID) (*ds.BorderCrossingFacts, error) {
-	request, err := r.GetCurrentRequest(client_id)
-	if err != nil {
-		log.Println("NO OPENED REQUESTS => CREATING NEW ONE")
+func (r *Repository) CreateBorderCrossingRequest(requestBody ds.CreateBorderCrossingFactBody, userUUID uuid.UUID) (int, error) {
+	var passport_ids []int
+	var passport_names []string
+	for _, passportName := range requestBody.Passports {
+		passport, err := r.GetPassportByName(passportName)
+		if err != nil {
+			return 0, err
+		}
+		passport_ids = append(passport_ids, int(passport.ID))
+		passport_names = append(passport_names, passport.Name)
+	}
 
-		//назначение модератора
+	request, err := r.GetCurrentRequest(userUUID)
+	if err != nil {
+		log.Println(" --- NEW REQUEST --- ", userUUID)
+
+		// Назначение модератора
 		moders := []ds.UserUID{}
 		err = r.db.Where("role = ?", 2).Find(&moders).Error
 		if err != nil {
-			return nil, err
+			return 0, err
 		}
 		n := rand.Int() % len(moders)
 		moder_refer := moders[n].UUID
 		log.Println("moder: ", moder_refer)
 
-		//поля типа Users, связанные с передавыемыми значениями из функции
-		client := ds.UserUID{UUID: client_id}
+		// Поля типа Users, связанные с передаваемыми значениями из функции
+		client := ds.UserUID{UUID: userUUID}
 		moder := ds.UserUID{UUID: moder_refer}
 
-		NewTransferRequest := &ds.BorderCrossingFacts{
+		request = &ds.BorderCrossingFacts{
 			ID:            uint(len([]ds.BorderCrossingFacts{})),
-			ClientRefer:   client_id,
+			ClientRefer:   userUUID,
 			Client:        client,
 			ModerRefer:    moder_refer,
 			Moder:         moder,
@@ -320,10 +331,133 @@ func (r *Repository) CreateBorderCrossingRequest(client_id uuid.UUID) (*ds.Borde
 			DateProcessed: nil,
 			DateFinished:  nil,
 		}
-		return NewTransferRequest, r.db.Create(NewTransferRequest).Error
+
+		err := r.db.Create(request).Error
+		if err != nil {
+			return 0, err
+		}
 	}
-	return request, nil
+
+	err = r.SetRequestPassports(int(request.ID), passport_names)
+	if err != nil {
+		return 0, err
+	}
+
+	// Uncomment the following block if needed
+	// for _, orbit_id := range orbit_ids {
+	// 	transfer_to_orbit := ds.TransferToOrbit{}
+	// 	transfer_to_orbit.RequestRefer = request.ID
+	// 	transfer_to_orbit.OrbitRefer = uint(orbit_id)
+	// 	err = r.CreateTransferToOrbit(transfer_to_orbit)
+	//
+	// 	if err != nil {
+	// 		return 0, err
+	// 	}
+	// }
+
+	// Return request ID along with nil error
+	return int(request.ID), nil
 }
+
+func (r *Repository) SetRequestPassports(requestID int, passports []string) error {
+	var passport_ids []int
+	log.Println(requestID, " - ", passports)
+	for _, passport_name := range passports {
+		passport, err := r.GetPassportByName(passport_name)
+		log.Println("passport: ", passport)
+		if err != nil {
+			return err
+		}
+
+		for _, ele := range passport_ids {
+			if ele == int(passport.ID) {
+				log.Println("!!!")
+				continue
+			}
+		}
+		log.Println("BEFORE :", passport_ids)
+		passport_ids = append(passport_ids, int(passport.ID))
+		log.Println("AFTER :", passport_ids)
+	}
+
+	var existing_links []ds.BorderCrossingPassports
+	err := r.db.Model(&ds.BorderCrossingPassports{}).Where("request_refer = ?", requestID).Find(&existing_links).Error
+	if err != nil {
+		return err
+	}
+	log.Println("LINKS: ", existing_links)
+	for _, link := range existing_links {
+		passportFound := false
+		passportIndex := -1
+		for index, ele := range passport_ids {
+			if ele == int(link.PassportRefer) {
+				passportFound = true
+				passportIndex = index
+				break
+			}
+		}
+		log.Println("ORB F: ", passportFound)
+		if passportFound {
+			log.Println("APPEND: ")
+			passport_ids = append(passport_ids[:passportIndex], passport_ids[passportIndex+1:]...)
+		} else {
+			log.Println("DELETE: ")
+			err := r.db.Model(&ds.BorderCrossingPassports{}).Delete(&link).Error
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	for _, orbit_id := range passport_ids {
+		newLink := ds.BorderCrossingPassports{
+			RequestRefer:  uint(requestID),
+			PassportRefer: uint(orbit_id),
+		}
+		log.Println("NEW LINK", newLink.PassportRefer, " --- ", newLink.RequestRefer)
+		err := r.db.Model(&ds.BorderCrossingPassports{}).Create(&newLink).Error
+		if err != nil {
+			return nil
+		}
+	}
+
+	return nil
+}
+
+//func (r *Repository) CreateBorderCrossingRequest(client_id uuid.UUID) (*ds.BorderCrossingFacts, error) {
+//	request, err := r.GetCurrentRequest(client_id)
+//	if err != nil {
+//		log.Println("NO OPENED REQUESTS => CREATING NEW ONE")
+//
+//		//назначение модератора
+//		moders := []ds.UserUID{}
+//		err = r.db.Where("role = ?", 2).Find(&moders).Error
+//		if err != nil {
+//			return nil, err
+//		}
+//		n := rand.Int() % len(moders)
+//		moder_refer := moders[n].UUID
+//		log.Println("moder: ", moder_refer)
+//
+//		//поля типа Users, связанные с передавыемыми значениями из функции
+//		client := ds.UserUID{UUID: client_id}
+//		moder := ds.UserUID{UUID: moder_refer}
+//
+//		NewTransferRequest := &ds.BorderCrossingFacts{
+//			ID:            uint(len([]ds.BorderCrossingFacts{})),
+//			ClientRefer:   client_id,
+//			Client:        client,
+//			ModerRefer:    moder_refer,
+//			Moder:         moder,
+//			Status:        "Черновик",
+//			DateCreated:   time.Now(),
+//			DateProcessed: nil,
+//			DateFinished:  nil,
+//		}
+//		return NewTransferRequest, r.db.Create(NewTransferRequest).Error
+//	}
+//	return request, nil
+//}
 
 func (r *Repository) GetCurrentRequest(client_refer uuid.UUID) (*ds.BorderCrossingFacts, error) {
 	request := &ds.BorderCrossingFacts{}
@@ -337,7 +471,7 @@ func (r *Repository) GetCurrentRequest(client_refer uuid.UUID) (*ds.BorderCrossi
 	return request, nil
 }
 
-func (r *Repository) GetAllRequests(userRole any, dateStart, dateFin string) ([]ds.BorderCrossingFacts, error) {
+func (r *Repository) GetAllRequests(userRole any, dateStart, dateFin, status string) ([]ds.BorderCrossingFacts, error) {
 
 	requests := []ds.BorderCrossingFacts{}
 	qry := r.db
@@ -348,6 +482,9 @@ func (r *Repository) GetAllRequests(userRole any, dateStart, dateFin string) ([]
 		qry = qry.Where("date_processed >= ?", dateStart)
 	} else if dateFin != "" {
 		qry = qry.Where("date_processed <= ?", dateFin)
+	}
+	if status != "" {
+		qry = qry.Where("status = ?", status)
 	}
 
 	if userRole == role.Moderator {
@@ -368,19 +505,19 @@ func (r *Repository) GetAllRequests(userRole any, dateStart, dateFin string) ([]
 	return requests, nil
 }
 
-func (r *Repository) GetRequestByID(id uint) (*ds.BorderCrossingFacts, error) {
-	request := &ds.BorderCrossingFacts{}
-
-	err := r.db.First(request, "id = ?", id).Error
-	if err != nil {
-		return nil, err
-	}
-
-	return request, nil
-}
+//func (r *Repository) GetRequestByID(id uint) (*ds.BorderCrossingFacts, error) {
+//	request := &ds.BorderCrossingFacts{}
+//
+//	err := r.db.First(request, "id = ?", id).Error
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	return request, nil
+//}
 
 func (r *Repository) ChangeRequestStatus(id uint, status string) error {
-	if slices.Contains(ds.ReqStatuses[2:4], status) {
+	if slices.Contains(ds.ReqStatuses[2:5], status) {
 		err := r.db.Model(&ds.BorderCrossingFacts{}).Where("id = ?", id).Update("date_finished", time.Now()).Error
 		if err != nil {
 			return err
@@ -398,8 +535,29 @@ func (r *Repository) ChangeRequestStatus(id uint, status string) error {
 	if err != nil {
 		return fmt.Errorf("ошибка обновления статуса: %w", err)
 	}
+	if status == ds.ReqStatuses[2] || status == ds.ReqStatuses[3] {
+		err = r.DeleteBorderCrossingPassportsEvery(id)
+	}
 
 	return nil
+}
+
+func (r *Repository) GetRequestByID(id uint, userUUID uuid.UUID, userRole any) (*ds.BorderCrossingFacts, error) {
+	request := &ds.BorderCrossingFacts{}
+	qry := r.db
+
+	if userRole == role.Client {
+		qry = qry.Where("client_refer = ?", userUUID)
+	} else {
+		qry = qry.Where("moder_refer = ?", userUUID)
+	}
+
+	err := qry.Preload("Client").Preload("Moder").First(request, "id = ?", id).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return request, nil
 }
 
 // =================================================================================
@@ -426,6 +584,32 @@ func (r *Repository) DeleteBorderCrossingPassportsEvery(transfer_id uint) error 
 		return r.db.Where("request_refer = ?", transfer_id).First(&ds.BorderCrossingPassports{}).Error
 	}
 	return r.db.Where("request_refer = ?", transfer_id).Delete(&ds.BorderCrossingPassports{}).Error
+}
+
+func (r *Repository) GetPassportsFromRequest(id int) ([]ds.Passports, error) {
+	passport_to_request := []ds.BorderCrossingPassports{}
+
+	err := r.db.Model(&ds.BorderCrossingPassports{}).Where("request_refer = ?", id).Find(&passport_to_request).Error
+	if err != nil {
+		return []ds.Passports{}, err
+	}
+
+	var passports []ds.Passports
+	for _, passport_to_requests := range passport_to_request {
+		orbit, err := r.GetPassportByID(int(passport_to_requests.PassportRefer))
+		if err != nil {
+			return []ds.Passports{}, err
+		}
+		for _, ele := range passports {
+			if ele == *orbit {
+				continue
+			}
+		}
+		passports = append(passports, *orbit)
+	}
+
+	return passports, nil
+
 }
 
 // =================================================================================

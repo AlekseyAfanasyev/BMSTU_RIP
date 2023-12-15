@@ -96,8 +96,10 @@ func (a *Application) StartServer() {
 
 	clientMethods := a.r.Group("", a.WithAuthCheck(role.Client))
 	{
-		clientMethods.POST("/:passport_seria/add", a.addPassportToRequest)
+		clientMethods.POST("/border_crossing_facts/create", a.createBorderCrossingFactRequest)
+		//clientMethods.POST("/:passport_seria/add", a.addPassportToRequest)
 		clientMethods.POST("border_crossing_fp/:req_id/delete", a.deleteBorderCrossingFactRequest)
+		clientMethods.PUT("/border_crossing_facts/set_passports", a.setRequestPassports)
 	}
 	moderMethods := a.r.Group("", a.WithAuthCheck(role.Moderator))
 	{
@@ -109,9 +111,10 @@ func (a *Application) StartServer() {
 
 	authorizedMethods := a.r.Group("", a.WithAuthCheck(role.Client, role.Moderator))
 	{
-		authorizedMethods.GET("/transfer_requests", a.getAllRequests)
-		authorizedMethods.GET("/transfer_requests/:req_id", a.getDetailedRequest)
-		authorizedMethods.PUT("/transfer_requests/change_status", a.changeRequestStatus)
+		authorizedMethods.GET("/border_crossing_passport/:req_id", a.getPassportsFromRequest)
+		authorizedMethods.GET("/border_crossing_facts", a.getAllRequests)
+		authorizedMethods.GET("/border_crossing_facts/:req_id", a.getDetailedRequest)
+		authorizedMethods.PUT("/border_crossing_facts/change_status", a.changeRequestStatus)
 	}
 
 	a.r.POST("/delete_passport/:passport_name", func(c *gin.Context) {
@@ -124,7 +127,7 @@ func (a *Application) StartServer() {
 			return
 		}
 
-		c.Redirect(http.StatusFound, "/")
+		c.Redirect(http.StatusOK, "/")
 	})
 
 	a.r.Run(":8000")
@@ -316,7 +319,7 @@ func (a *Application) getAllPassports(c *gin.Context) {
 		c.Error(err)
 	}
 
-	c.JSON(http.StatusFound, allPassports)
+	c.JSON(http.StatusOK, allPassports)
 }
 
 // @Summary      Получение детализированной информации о паспорте
@@ -378,7 +381,7 @@ func (a *Application) changeAvailability(c *gin.Context) {
 		return
 	}
 
-	c.Redirect(http.StatusFound, "/passports")
+	c.Redirect(http.StatusOK, "/passports")
 }
 
 // @Summary      Добавление нового паспорта
@@ -463,31 +466,58 @@ func (a *Application) editPassport(c *gin.Context) {
 // @Success      200  {object}  string
 // @Param Body body jsonMap true "Данные заказа"
 // @Router       /{passport_seria}/add [post]
-func (a *Application) addPassportToRequest(c *gin.Context) {
-	passport_seria := c.Param("passport_seria")
-	passport, err := a.repo.GetPassportBySeria(passport_seria)
-	if err != nil {
-		c.Error(err)
+//func (a *Application) addPassportToRequest(c *gin.Context) {
+//	passport_seria := c.Param("passport_seria")
+//	passport, err := a.repo.GetPassportBySeria(passport_seria)
+//	if err != nil {
+//		c.Error(err)
+//		return
+//	}
+//
+//	userUUID, exists := c.Get("userUUID")
+//	if !exists {
+//		panic(exists)
+//	}
+//
+//	request := &ds.BorderCrossingFacts{}
+//	request, err = a.repo.CreateBorderCrossingRequest(userUUID.(uuid.UUID))
+//	if err != nil {
+//		c.Error(err)
+//		return
+//	}
+//
+//	err = a.repo.AddRequestToBorderCrossingPassports(int(passport.ID), int(request.ID))
+//	if err != nil {
+//		c.Error(err)
+//		return
+//	}
+//}
+
+func (a *Application) createBorderCrossingFactRequest(c *gin.Context) {
+	var request_body ds.CreateBorderCrossingFactBody
+
+	if err := c.BindJSON(&request_body); err != nil {
+		c.String(http.StatusBadGateway, "Не могу распознать json")
 		return
 	}
 
-	userUUID, exists := c.Get("userUUID")
-	if !exists {
-		panic(exists)
-	}
+	_userUUID, ok := c.Get("userUUID")
 
-	request := &ds.BorderCrossingFacts{}
-	request, err = a.repo.CreateBorderCrossingRequest(userUUID.(uuid.UUID))
-	if err != nil {
-		c.Error(err)
+	if !ok {
+		c.String(http.StatusInternalServerError, "Вы сначала должны залогиниться")
 		return
 	}
 
-	err = a.repo.AddRequestToBorderCrossingPassports(int(passport.ID), int(request.ID))
+	userUUID := _userUUID.(uuid.UUID)
+	reqID, err := a.repo.CreateBorderCrossingRequest(request_body, userUUID)
+
 	if err != nil {
 		c.Error(err)
+		c.String(http.StatusNotFound, "Не могу добавить паспорт")
 		return
 	}
+
+	c.JSON(http.StatusCreated, reqID)
 }
 
 // @Summary      Получение всех заявок
@@ -499,6 +529,8 @@ func (a *Application) addPassportToRequest(c *gin.Context) {
 func (a *Application) getAllRequests(c *gin.Context) {
 	dateStart := c.Query("date_start")
 	dateFin := c.Query("date_fin")
+	status := c.Query("status")
+	log.Println(status)
 
 	userRole, exists := c.Get("userRole")
 	if !exists {
@@ -509,14 +541,14 @@ func (a *Application) getAllRequests(c *gin.Context) {
 	//	panic(exists)
 	//}
 
-	requests, err := a.repo.GetAllRequests(userRole, dateStart, dateFin)
+	requests, err := a.repo.GetAllRequests(userRole, dateStart, dateFin, status)
 
 	if err != nil {
 		c.Error(err)
 		return
 	}
 
-	c.JSON(http.StatusFound, requests)
+	c.JSON(http.StatusOK, requests)
 }
 
 // @Summary      Получение детализированной заявки
@@ -529,17 +561,26 @@ func (a *Application) getAllRequests(c *gin.Context) {
 func (a *Application) getDetailedRequest(c *gin.Context) {
 	req_id, err := strconv.Atoi(c.Param("req_id"))
 	if err != nil {
-		// ... handle error
+		log.Println("REQ ID: ", req_id)
 		panic(err)
 	}
 
-	requests, err := a.repo.GetRequestByID(uint(req_id))
+	userUUID, exists := c.Get("userUUID")
+	if !exists {
+		panic(exists)
+	}
+	userRole, exists := c.Get("userRole")
+	if !exists {
+		panic(exists)
+	}
+
+	request, err := a.repo.GetRequestByID(uint(req_id), userUUID.(uuid.UUID), userRole)
 	if err != nil {
-		c.Error(err)
+		c.AbortWithError(http.StatusForbidden, err)
 		return
 	}
 
-	c.JSON(http.StatusFound, requests)
+	c.JSON(http.StatusOK, request)
 }
 func (a *Application) changeRequestStatus(c *gin.Context) {
 	var requestBody ds.ChangeBorderCrossingFactStatus
@@ -548,6 +589,7 @@ func (a *Application) changeRequestStatus(c *gin.Context) {
 		c.Error(err)
 		return
 	}
+	log.Println(requestBody)
 
 	userRole, exists := c.Get("userRole")
 	if !exists {
@@ -557,13 +599,13 @@ func (a *Application) changeRequestStatus(c *gin.Context) {
 	if !exists {
 		panic(exists)
 	}
-
-	currRequest, err := a.repo.GetRequestByID(requestBody.BorderCrossingFactID)
+	log.Println("ok: ", userRole, userUUID)
+	currRequest, err := a.repo.GetRequestByID(requestBody.BorderCrossingFactID, userUUID.(uuid.UUID), userRole)
 	if err != nil {
-		c.Error(err)
+		c.AbortWithError(http.StatusForbidden, err)
 		return
 	}
-
+	log.Println("ok curr")
 	if !slices.Contains(ds.ReqStatuses, requestBody.Status) {
 		c.String(http.StatusBadRequest, "Неверный статус")
 		return
@@ -572,6 +614,11 @@ func (a *Application) changeRequestStatus(c *gin.Context) {
 	if userRole == role.Client {
 		if currRequest.ClientRefer == userUUID {
 			if slices.Contains(ds.ReqStatuses[:3], requestBody.Status) {
+				if currRequest.Status != ds.ReqStatuses[0] {
+					c.String(http.StatusBadRequest, "Нельзя поменять статус с ", currRequest.Status,
+						" на ", requestBody.Status)
+					return
+				}
 				err = a.repo.ChangeRequestStatus(requestBody.BorderCrossingFactID, requestBody.Status)
 
 				if err != nil {
@@ -612,6 +659,24 @@ func (a *Application) changeRequestStatus(c *gin.Context) {
 	}
 }
 
+func (a *Application) getPassportsFromRequest(c *gin.Context) { // нужно добавить проверку на авторизацию пользователя
+	req_id, err := strconv.Atoi(c.Param("req_id"))
+	if err != nil {
+		c.String(http.StatusBadRequest, "Ошибка в ID заявки")
+		return
+	}
+
+	orbits, err := a.repo.GetPassportsFromRequest(req_id)
+	log.Println(orbits)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Ошибка при получении орбит из заявки")
+		return
+	}
+
+	c.JSON(http.StatusOK, orbits)
+
+}
+
 // @Summary      Логическое удаление заявки
 // @Description  Изменяет статус заявки на "Удалена"
 // @Tags         Заявки
@@ -637,4 +702,21 @@ func (a *Application) deleteBorderCrossingFactRequest(c *gin.Context) {
 	}
 
 	c.String(http.StatusCreated, "ALL WAS DELETED")
+}
+
+func (a *Application) setRequestPassports(c *gin.Context) {
+	var requestBody ds.SetRequestPassportsRequestBody
+
+	if err := c.BindJSON(&requestBody); err != nil {
+		c.String(http.StatusBadRequest, "Не получается распознать json запрос")
+		return
+	}
+
+	err := a.repo.SetRequestPassports(requestBody.RequestID, requestBody.Passports)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не получилось задать регионы для заявки\n"+err.Error())
+	}
+
+	c.String(http.StatusCreated, "Регионы заявки успешно заданы!")
+
 }

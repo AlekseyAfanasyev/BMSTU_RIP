@@ -47,8 +47,17 @@ type BorderCrossingPassports struct {
 }
 
 type ChangeBorderCrossingFactStatus struct {
-	BorderCrossingFactID uint
-	Status               string
+	BorderCrossingFactID uint   `json:"reqID"`
+	Status               string `json:"status"`
+}
+
+type CreateBorderCrossingFactBody struct {
+	Passports []string
+}
+
+type SetRequestPassportsRequestBody struct {
+	RequestID int
+	Passports []string
 }
 
 var ReqStatuses = []string{
