@@ -227,7 +227,6 @@ func (a *Application) login(c *gin.Context) {
 			return
 		}
 
-		//httpOnly=true, secure=true -> не могу читать куки на фронте ...
 		c.SetCookie("orbits-api-token", "Bearer "+strToken, int(time.Now().Add(time.Second*3600).
 			Unix()), "", "", true, true)
 
