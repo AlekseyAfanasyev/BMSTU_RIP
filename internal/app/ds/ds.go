@@ -44,6 +44,7 @@ type BorderCrossingPassports struct {
 	Request       BorderCrossingFacts `gorm:"foreignKey:RequestRefer"`
 	PassportRefer uint
 	Passport      Passports `gorm:"foreignKey:PassportRefer"`
+	IsBiometry    *bool     `gorm:"type:bool"`
 }
 
 type ChangeBorderCrossingFactStatus struct {
@@ -66,3 +67,22 @@ var ReqStatuses = []string{
 	"Удалена",
 	"Отклонена",
 	"Оказана"}
+
+type AsyncBody struct {
+	RequestID  int  `json:"request_refer"`
+	PassportID int  `json:"passport_refer"`
+	Fact       bool `json:"is_biometry"`
+}
+
+type TestReqBody struct {
+	Passport string
+}
+
+type TestDelBody struct {
+	Passport string
+	Req      string
+}
+
+type DelTransfReqRequestBody struct {
+	Req int
+}

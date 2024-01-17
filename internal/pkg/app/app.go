@@ -18,6 +18,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"log"
 	"net/http"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -93,13 +94,15 @@ func (a *Application) StartServer() {
 
 	a.r.GET("passports", a.getAllPassports)
 	a.r.GET("passports/:passport_name", a.getDetailedPassport)
+	a.r.POST("/async/:request_refer/:passport_refer", a.asyncInsertFact)
 
 	clientMethods := a.r.Group("", a.WithAuthCheck(role.Client))
 	{
-		clientMethods.POST("/border_crossing_facts/create", a.createBorderCrossingFactRequest)
-		//clientMethods.POST("/:passport_seria/add", a.addPassportToRequest)
-		clientMethods.POST("border_crossing_fp/:req_id/delete", a.deleteBorderCrossingFactRequest)
+		//clientMethods.POST("/border_crossing_facts/create", a.createBorderCrossingFactRequest)
+		clientMethods.POST("/:passport_name/add", a.addPassportToRequest)
+		//clientMethods.POST("border_crossing_fp/:req_id/delete", a.deleteBorderCrossingFactRequest)
 		clientMethods.PUT("/border_crossing_facts/set_passports", a.setRequestPassports)
+		clientMethods.DELETE("/border_crossing_passports/delete_single", a.deleteBorderCrossingPassportSingle)
 	}
 	moderMethods := a.r.Group("", a.WithAuthCheck(role.Moderator))
 	{
@@ -107,6 +110,7 @@ func (a *Application) StartServer() {
 		moderMethods.POST("passports/add_new_passport", a.newPassport)
 		moderMethods.POST("change_passport_availibility/:passport_name", a.changeAvailability)
 		moderMethods.GET("/ping", a.ping)
+		moderMethods.POST("/orbits/upload_image", a.uploadOrbitImage)
 	}
 
 	authorizedMethods := a.r.Group("", a.WithAuthCheck(role.Client, role.Moderator))
@@ -311,11 +315,13 @@ func (a *Application) ping(gCtx *gin.Context) {
 // @Router /passports [get]
 func (a *Application) getAllPassports(c *gin.Context) {
 	passportName := c.Query("passport_name")
+	passportGender := c.Query("passport_gender")
 
-	allPassports, err := a.repo.GetAllPassports(passportName)
+	allPassports, err := a.repo.GetAllPassports(passportName, passportGender)
 
 	if err != nil {
-		c.Error(err)
+		c.AbortWithError(http.StatusBadRequest, err)
+		return
 	}
 
 	c.JSON(http.StatusOK, allPassports)
@@ -338,7 +344,7 @@ func (a *Application) getDetailedPassport(c *gin.Context) {
 	passport, err := a.repo.GetPassportByName(passport_name)
 
 	if err != nil {
-		c.Error(err)
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -355,6 +361,7 @@ func (a *Application) getDetailedPassport(c *gin.Context) {
 	//})
 
 	c.JSON(http.StatusOK, gin.H{
+		"ID":        passport.ID,
 		"Name":      passport.Name,
 		"Image":     passport.Image,
 		"Seria":     passport.Seria,
@@ -365,6 +372,34 @@ func (a *Application) getDetailedPassport(c *gin.Context) {
 		"Birthdate": passport.Birthdate,
 		"BDplace":   passport.BDplace,
 	})
+}
+
+func (a *Application) uploadOrbitImage(c *gin.Context) {
+	// Получение файла из запроса
+	file, err := c.FormFile("image")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Нет файла с картинкой"})
+		return
+	}
+
+	// Сохранение файла временно
+	tempFilePath := "C:/MGTU/5 semestr/" + file.Filename
+	if err := c.SaveUploadedFile(file, tempFilePath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось сохранить картинку"})
+		return
+	}
+	defer os.Remove(tempFilePath) // Удаляем временный файл после использования
+
+	// Вызов репозиторной функции для загрузки изображения в Minio
+	log.Println("temp path ", tempFilePath)
+	imageURL, err := a.repo.UploadImageToMinio(tempFilePath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось загрузить картинку в minio"})
+		return
+	}
+
+	// Вернуть URL изображения в ответе
+	c.JSON(http.StatusOK, imageURL)
 }
 
 func (a *Application) changeAvailability(c *gin.Context) {
@@ -465,6 +500,7 @@ func (a *Application) editPassport(c *gin.Context) {
 // @Success      200  {object}  string
 // @Param Body body jsonMap true "Данные заказа"
 // @Router       /{passport_seria}/add [post]
+
 //func (a *Application) addPassportToRequest(c *gin.Context) {
 //	passport_seria := c.Param("passport_seria")
 //	passport, err := a.repo.GetPassportBySeria(passport_seria)
@@ -492,32 +528,69 @@ func (a *Application) editPassport(c *gin.Context) {
 //	}
 //}
 
-func (a *Application) createBorderCrossingFactRequest(c *gin.Context) {
-	var request_body ds.CreateBorderCrossingFactBody
+func (a *Application) addPassportToRequest(c *gin.Context) {
+	passport_name := c.Param("passport_name")
 
+	request_body := &ds.TestReqBody{}
 	if err := c.BindJSON(&request_body); err != nil {
 		c.String(http.StatusBadGateway, "Не могу распознать json")
 		return
 	}
+	log.Println(request_body)
 
-	_userUUID, ok := c.Get("userUUID")
-
-	if !ok {
-		c.String(http.StatusInternalServerError, "Вы сначала должны залогиниться")
-		return
-	}
-
-	userUUID := _userUUID.(uuid.UUID)
-	reqID, err := a.repo.CreateBorderCrossingRequest(request_body, userUUID)
-
+	passport, err := a.repo.GetPassportByName(passport_name)
 	if err != nil {
 		c.Error(err)
-		c.String(http.StatusNotFound, "Не могу добавить паспорт")
+		return
+	}
+	userUUID, exists := c.Get("userUUID")
+	if !exists {
+		panic(exists)
+	}
+
+	request := &ds.BorderCrossingFacts{}
+	request, err = a.repo.CreateBorderCrossingRequest(userUUID.(uuid.UUID))
+	if err != nil {
+		c.Error(err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, reqID)
+	err = a.repo.AddRequestToBorderCrossingPassports(passport.ID, request.ID)
+	if err != nil {
+		c.Error(err)
+
+		return
+	}
+
+	c.JSON(http.StatusOK, request.ID)
 }
+
+//func (a *Application) createBorderCrossingFactRequest(c *gin.Context) {
+//	var request_body ds.CreateBorderCrossingFactBody
+//
+//	if err := c.BindJSON(&request_body); err != nil {
+//		c.String(http.StatusBadGateway, "Не могу распознать json")
+//		return
+//	}
+//
+//	_userUUID, ok := c.Get("userUUID")
+//
+//	if !ok {
+//		c.String(http.StatusInternalServerError, "Вы сначала должны залогиниться")
+//		return
+//	}
+//
+//	userUUID := _userUUID.(uuid.UUID)
+//	reqID, err := a.repo.CreateBorderCrossingRequest(request_body, userUUID)
+//
+//	if err != nil {
+//		c.Error(err)
+//		c.String(http.StatusNotFound, "Не могу добавить паспорт")
+//		return
+//	}
+//
+//	c.JSON(http.StatusCreated, reqID)
+//}
 
 // @Summary      Получение всех заявок
 // @Description  Получает все заявки
@@ -575,7 +648,7 @@ func (a *Application) getDetailedRequest(c *gin.Context) {
 
 	request, err := a.repo.GetRequestByID(uint(req_id), userUUID.(uuid.UUID), userRole)
 	if err != nil {
-		c.AbortWithError(http.StatusForbidden, err)
+		c.JSON(http.StatusForbidden, err)
 		return
 	}
 
@@ -703,6 +776,30 @@ func (a *Application) deleteBorderCrossingFactRequest(c *gin.Context) {
 	c.String(http.StatusCreated, "ALL WAS DELETED")
 }
 
+func (a *Application) deleteBorderCrossingPassportSingle(c *gin.Context) {
+	var requestBody ds.TestDelBody
+
+	if err := c.BindJSON(&requestBody); err != nil {
+		c.Error(err)
+		c.String(http.StatusBadRequest, "Bad Request")
+		return
+	}
+	passport, err := a.repo.GetPassportByName(requestBody.Passport)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+	}
+
+	err1, err2 := a.repo.DeleteBorderCrossingPassportsSingle(requestBody.Req, int(passport.ID))
+
+	if err1 != nil || err2 != nil {
+		c.Error(err1)
+		c.Error(err2)
+		c.String(http.StatusBadRequest, "Bad Request")
+		return
+	}
+	c.String(http.StatusCreated, " m-m was deleted")
+}
+
 func (a *Application) setRequestPassports(c *gin.Context) {
 	var requestBody ds.SetRequestPassportsRequestBody
 
@@ -713,9 +810,27 @@ func (a *Application) setRequestPassports(c *gin.Context) {
 
 	err := a.repo.SetRequestPassports(requestBody.RequestID, requestBody.Passports)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не получилось задать регионы для заявки\n"+err.Error())
+		c.String(http.StatusInternalServerError, "Не получилось задать паспорта для заявки\n"+err.Error())
 	}
 
-	c.String(http.StatusCreated, "Регионы заявки успешно заданы!")
+	c.String(http.StatusCreated, "Паспорта заявки успешно заданы!")
 
+}
+
+func (a *Application) asyncInsertFact(c *gin.Context) {
+	log.Println("---")
+	var requestBody = &ds.AsyncBody{}
+	if err := c.BindJSON(&requestBody); err != nil {
+		log.Println("ERROR")
+		c.Error(err)
+	}
+	log.Println("ASYNC: ", requestBody.RequestID, " ---> ", requestBody.Fact)
+
+	err := a.repo.AddIsBiometryFactToMM(uint(requestBody.RequestID), uint(requestBody.PassportID), requestBody.Fact)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, requestBody.Fact)
 }
