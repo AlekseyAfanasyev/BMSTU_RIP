@@ -70,18 +70,6 @@ func (r *Repository) DeletePassport(passport_name string) error {
 // --------------------------------- PASSPORTS METHODS ---------------------------------
 // ---------------------------------------------------------------------------------
 
-//func (r *Repository) GetAllPassports() ([]ds.Passports, error) {
-//	passports := []ds.Passports{}
-//
-//	err := r.db.Order("id").Find(&passports).Error
-//
-//	if err != nil {
-//		return nil, err
-//	}
-//
-//	return passports, nil
-//}
-
 //func (r *Repository) GetAllPassports(passportName, passportGender string) ([]ds.Passports, error) {
 //	passports := []ds.Passports{}
 //	if passportName == "" {
