@@ -98,19 +98,16 @@ func (a *Application) StartServer() {
 
 	clientMethods := a.r.Group("", a.WithAuthCheck(role.Client))
 	{
-		//clientMethods.POST("/border_crossing_facts/create", a.createBorderCrossingFactRequest)
-		clientMethods.POST("/:passport_name/add", a.addPassportToRequest)
-		//clientMethods.POST("border_crossing_fp/:req_id/delete", a.deleteBorderCrossingFactRequest)
+		clientMethods.POST("/passports/:passport_name/add", a.addPassportToRequest)
 		clientMethods.PUT("/border_crossing_facts/set_passports", a.setRequestPassports)
 		clientMethods.DELETE("/border_crossing_passports/delete_single", a.deleteBorderCrossingPassportSingle)
 	}
 	moderMethods := a.r.Group("", a.WithAuthCheck(role.Moderator))
 	{
-		moderMethods.PUT("passports/:passport_seria/edit", a.editPassport)
+		moderMethods.PUT("passports/:passport_name/edit", a.editPassport)
 		moderMethods.POST("passports/add_new_passport", a.newPassport)
 		moderMethods.POST("change_passport_availibility/:passport_name", a.changeAvailability)
-		moderMethods.GET("/ping", a.ping)
-		moderMethods.POST("/orbits/upload_image", a.uploadOrbitImage)
+		moderMethods.POST("/passports/upload_image", a.uploadPassportImage)
 	}
 
 	authorizedMethods := a.r.Group("", a.WithAuthCheck(role.Client, role.Moderator))
@@ -119,6 +116,8 @@ func (a *Application) StartServer() {
 		authorizedMethods.GET("/border_crossing_facts", a.getAllRequests)
 		authorizedMethods.GET("/border_crossing_facts/:req_id", a.getDetailedRequest)
 		authorizedMethods.PUT("/border_crossing_facts/change_status", a.changeRequestStatus)
+		authorizedMethods.GET("/manage_passports/:title/biometry", a.getExtractionData)
+		authorizedMethods.GET("/manage_passports/async_processed", a.getAsyncProcessed)
 	}
 
 	a.r.POST("/delete_passport/:passport_name", func(c *gin.Context) {
@@ -137,6 +136,34 @@ func (a *Application) StartServer() {
 	a.r.Run(":8000")
 
 	log.Println("Server is down")
+}
+
+func (a *Application) getExtractionData(c *gin.Context) { // нужно добавить проверку на авторизацию пользователя
+	req_id, err := strconv.Atoi(c.Param("title"))
+	if err != nil {
+		c.String(http.StatusBadRequest, "Ошибка в ID заявки")
+		return
+	}
+
+	passports, err := a.repo.GetExtractionDataByRepID(req_id)
+	log.Println(passports)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Ошибка при получении ресурсов из заявки")
+		return
+	}
+
+	c.JSON(http.StatusOK, passports)
+}
+
+func (a *Application) getAsyncProcessed(c *gin.Context) { // нужно добавить проверку на авторизацию пользователя
+	n, err := a.repo.GetAsyncProcessedAmount()
+	log.Println("обработано", n, "записей из М-М")
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Ошибка при получении паспортов из заявки")
+		return
+	}
+
+	c.JSON(http.StatusOK, n)
 }
 
 // @Summary Зарегистрировать нового пользователя
@@ -374,13 +401,15 @@ func (a *Application) getDetailedPassport(c *gin.Context) {
 	})
 }
 
-func (a *Application) uploadOrbitImage(c *gin.Context) {
+func (a *Application) uploadPassportImage(c *gin.Context) {
 	// Получение файла из запроса
 	file, err := c.FormFile("image")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Нет файла с картинкой"})
 		return
 	}
+	passportName := c.PostForm("passportName")
+	log.Println(passportName)
 
 	// Сохранение файла временно
 	tempFilePath := "C:/MGTU/5 semestr/" + file.Filename
@@ -391,8 +420,7 @@ func (a *Application) uploadOrbitImage(c *gin.Context) {
 	defer os.Remove(tempFilePath) // Удаляем временный файл после использования
 
 	// Вызов репозиторной функции для загрузки изображения в Minio
-	log.Println("temp path ", tempFilePath)
-	imageURL, err := a.repo.UploadImageToMinio(tempFilePath)
+	imageURL, err := a.repo.UploadImageToMinio(tempFilePath, passportName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось загрузить картинку в minio"})
 		return
@@ -464,7 +492,7 @@ func (a *Application) newPassport(c *gin.Context) {
 // @Router       /passports/{passport_seria}/edit [put]
 func (a *Application) editPassport(c *gin.Context) {
 	passport_seria := c.Param("passport_seria")
-	passport, err := a.repo.GetPassportBySeria(passport_seria)
+	passport, err := a.repo.GetPassportByName(passport_seria)
 
 	var editingPassport ds.Passports
 
@@ -600,6 +628,7 @@ func (a *Application) addPassportToRequest(c *gin.Context) {
 // @Router       /border_crossing_facts [get]
 func (a *Application) getAllRequests(c *gin.Context) {
 	dateStart := c.Query("date_start")
+	log.Println("GETALLREQUESTS")
 	dateFin := c.Query("date_fin")
 	status := c.Query("status")
 	log.Println(status)
@@ -613,13 +642,13 @@ func (a *Application) getAllRequests(c *gin.Context) {
 	//	panic(exists)
 	//}
 
-	requests, err := a.repo.GetAllRequests(userRole, dateStart, dateFin, status)
+	requests, _, err := a.repo.GetAllRequests(userRole, dateStart, dateFin, status)
 
 	if err != nil {
 		c.Error(err)
 		return
 	}
-
+	log.Println("????", requests)
 	c.JSON(http.StatusOK, requests)
 }
 
@@ -729,6 +758,14 @@ func (a *Application) changeRequestStatus(c *gin.Context) {
 			return
 		}
 	}
+}
+
+func (a *Application) getDistinctClients(c *gin.Context) {
+	distinctClients, err := a.repo.GetDistinctClients()
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+	}
+	c.JSON(http.StatusOK, distinctClients)
 }
 
 func (a *Application) getPassportsFromRequest(c *gin.Context) { // нужно добавить проверку на авторизацию пользователя

@@ -241,30 +241,29 @@ func (r *Repository) EditPassport(passportID uint, editingPassport ds.Passports)
 	return r.db.Model(&ds.Passports{}).Where("id = ?", passportID).Updates(editingPassport).Error
 }
 
-func (r *Repository) UploadImageToMinio(imagePath string) (string, error) {
-	// Получаем клиента Minio из настроек
+func (r *Repository) UploadImageToMinio(imagePath, passportName string) (string, error) {
 	minioClient := mClient.NewMinioClient()
 
 	// Загрузка изображения в Minio
 	file, err := os.Open(imagePath)
 	if err != nil {
-		return "", err
+		return "!!!", err
 	}
 	defer file.Close()
-
 	// uuid - уникальное имя; parts - имя файла
 	//objectName := uuid.New().String() + ".jpg"
 	parts := strings.Split(imagePath, "/")
 	objectName := parts[len(parts)-1]
-
 	_, err = minioClient.PutObject(context.Background(), "pc-bucket", objectName, file, -1, minio.PutObjectOptions{})
 	if err != nil {
 		return "!!!", err
 	}
 
 	// Возврат URL изображения в Minio
-	log.Println("Error MINIO")
-	return fmt.Sprintf("http://%s/%s/%s", minioClient.EndpointURL().Host, "pc-bucket", objectName), nil
+	imgURL := fmt.Sprintf("http://%s/%s/%s", minioClient.EndpointURL().Host, "pc-bucket", objectName)
+	err = r.db.Model(&ds.Passports{}).Where("name = ?", passportName).Update("image", imgURL).Error
+
+	return imgURL, nil
 }
 
 func (r *Repository) deleteImageFromMinio(imageURL string) error {
@@ -526,8 +525,8 @@ func (r *Repository) GetCurrentRequest(client_refer uuid.UUID) (*ds.BorderCrossi
 //	return requests, nil
 //}
 
-func (r *Repository) GetAllRequests(userRole any, dateStart, dateFin, status /*client*/ string) ([]ds.BorderCrossingFacts, error) {
-
+func (r *Repository) GetAllRequests(userRole any, dateStart, dateFin, status /*client*/ string) ([]ds.BorderCrossingFacts, int, error) {
+	var null_in_async int64
 	requests := []ds.BorderCrossingFacts{}
 	qry := r.db
 
@@ -557,10 +556,64 @@ func (r *Repository) GetAllRequests(userRole any, dateStart, dateFin, status /*c
 		Find(&requests).Error
 
 	if err != nil {
+		return nil, 0, err
+	}
+
+	err1 := r.db.Model(&ds.BorderCrossingPassports{}).Where("is_biometry = false").Count(&null_in_async).Error
+
+	if err1 != nil {
+		return nil, 0, err1
+	}
+
+	return requests, int(null_in_async), nil
+}
+
+func (r *Repository) GetExtractionDataByRepID(id int) ([][]int, error) {
+	var reports []ds.BorderCrossingPassports
+	var result [][]int
+
+	err := r.db.Model(&ds.BorderCrossingPassports{}).Select("passport_refer", "is_biometry").
+		Where("request_refer = ?", id).
+		Find(&reports).Error
+
+	if err != nil {
 		return nil, err
 	}
 
-	return requests, nil
+	for _, report := range reports {
+		// Преобразование *bool в int
+		isBiometryInt := 0
+		if report.IsBiometry != nil && *report.IsBiometry {
+			isBiometryInt = 1
+		}
+
+		result = append(result, []int{int(report.PassportRefer), isBiometryInt})
+	}
+
+	return result, nil
+}
+
+func (r *Repository) GetAsyncProcessedAmount() (int64, error) {
+	MM := &ds.BorderCrossingPassports{}
+	var count int64
+	err := r.db.Model(&MM).Where("is_biometry != 0").Count(&count).Error
+	if err != nil {
+		return 0, err
+	}
+
+	return count, err
+}
+
+func (r *Repository) GetDistinctClients() ([]string, error) {
+	var distinctClients []string
+	err := r.db.
+		Table("transfer_requests").
+		Joins("JOIN users ON transfer_requests.client_refer = users.uuid").
+		Select("DISTINCT users.name").
+		Pluck("users.name", &distinctClients).
+		Error
+
+	return distinctClients, err
 }
 
 //func (r *Repository) GetRequestByID(id uint) (*ds.BorderCrossingFacts, error) {
