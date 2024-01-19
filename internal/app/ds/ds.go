@@ -86,3 +86,7 @@ type TestDelBody struct {
 type DelTransfReqRequestBody struct {
 	Req int
 }
+
+type NewBody struct {
+	Status string `json:"status"`
+}

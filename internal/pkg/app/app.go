@@ -106,7 +106,7 @@ func (a *Application) StartServer() {
 	{
 		moderMethods.PUT("passports/:passport_name/edit", a.editPassport)
 		moderMethods.POST("passports/add_new_passport", a.newPassport)
-		moderMethods.POST("change_passport_availibility/:passport_name", a.changeAvailability)
+		moderMethods.DELETE("change_passport_availibility/:passport_name", a.changeAvailability)
 		moderMethods.POST("/passports/upload_image", a.uploadPassportImage)
 	}
 
@@ -117,7 +117,10 @@ func (a *Application) StartServer() {
 		authorizedMethods.GET("/border_crossing_facts/:req_id", a.getDetailedRequest)
 		authorizedMethods.PUT("/border_crossing_facts/change_status", a.changeRequestStatus)
 		authorizedMethods.GET("/manage_passports/:title/biometry", a.getExtractionData)
-		authorizedMethods.GET("/manage_passports/async_processed", a.getAsyncProcessed)
+
+		authorizedMethods.PUT("/border_crossing_facts/:req_id/change_status_client", a.changeRequestStatusClient)
+		authorizedMethods.PUT("/border_crossing_facts/:req_id/change_status_moder", a.changeRequestStatusModer)
+		authorizedMethods.DELETE("/border_crossing_facts/:req_id/delete", a.deleteRequest)
 	}
 
 	a.r.POST("/delete_passport/:passport_name", func(c *gin.Context) {
@@ -856,12 +859,17 @@ func (a *Application) setRequestPassports(c *gin.Context) {
 
 func (a *Application) asyncInsertFact(c *gin.Context) {
 	log.Println("---")
+	authHeader := c.GetHeader("Authorization")
+	if authHeader != "generate-secret-assync-passports" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 	var requestBody = &ds.AsyncBody{}
 	if err := c.BindJSON(&requestBody); err != nil {
 		log.Println("ERROR")
 		c.Error(err)
 	}
-	log.Println("ASYNC: ", requestBody.RequestID, " ---> ", requestBody.Fact)
+	log.Println("ASYNC!!!!!!!!!!!!!!!!!!!!!!!: ", requestBody.RequestID, " ---> ", requestBody.Fact)
 
 	err := a.repo.AddIsBiometryFactToMM(uint(requestBody.RequestID), uint(requestBody.PassportID), requestBody.Fact)
 	if err != nil {
@@ -870,4 +878,124 @@ func (a *Application) asyncInsertFact(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, requestBody.Fact)
+}
+
+func (a *Application) changeRequestStatusClient(c *gin.Context) {
+	req_id, err := strconv.Atoi(c.Param("req_id"))
+
+	userRole, exists := c.Get("userRole")
+	if !exists {
+		panic(exists)
+	}
+	userUUID, exists := c.Get("userUUID")
+	if !exists {
+		panic(exists)
+	}
+
+	currRequest, err := a.repo.GetRequestByID(uint(req_id), userUUID.(uuid.UUID), userRole)
+	if err != nil {
+		c.AbortWithError(http.StatusForbidden, err)
+		return
+	}
+
+	if currRequest.ClientRefer == userUUID {
+		err = a.repo.ChangeRequestStatus(uint(req_id), ds.ReqStatuses[1])
+
+		if err != nil {
+			c.Error(err)
+			return
+		}
+
+		c.String(http.StatusCreated, "Заявка оформлена")
+		return
+	} else {
+		c.String(http.StatusForbidden, "Клиент не является ответственным")
+		return
+	}
+}
+
+func (a *Application) changeRequestStatusModer(c *gin.Context) {
+	var requestBody ds.NewBody
+
+	if err := c.BindJSON(&requestBody); err != nil {
+		c.Error(err)
+		return
+	}
+	log.Println(requestBody.Status)
+
+	req_id, err := strconv.Atoi(c.Param("req_id"))
+
+	userRole, exists := c.Get("userRole")
+	if !exists {
+		panic(exists)
+	}
+	userUUID, exists := c.Get("userUUID")
+	if !exists {
+		panic(exists)
+	}
+
+	currRequest, err := a.repo.GetRequestByID(uint(req_id), userUUID.(uuid.UUID), userRole)
+	if err != nil {
+		c.AbortWithError(http.StatusForbidden, err)
+		return
+	}
+
+	if !slices.Contains(ds.ReqStatuses, requestBody.Status) {
+		c.String(http.StatusBadRequest, "Неверный статус")
+		return
+	}
+
+	if currRequest.ModerRefer == userUUID {
+		if slices.Contains(ds.ReqStatuses[len(ds.ReqStatuses)-2:], requestBody.Status) {
+			err = a.repo.ChangeRequestStatus(uint(req_id), requestBody.Status)
+
+			if err != nil {
+				c.Error(err)
+				return
+			}
+
+			c.String(http.StatusCreated, "Текущий статус: ", requestBody.Status)
+			return
+		} else {
+			c.String(http.StatusForbidden, "Модератор не может установить статус ", requestBody.Status)
+			return
+		}
+	} else {
+		c.String(http.StatusForbidden, "Модератор не является ответственным")
+		return
+	}
+}
+
+func (a *Application) deleteRequest(c *gin.Context) {
+	req_id, err := strconv.Atoi(c.Param("req_id"))
+
+	userRole, exists := c.Get("userRole")
+	if !exists {
+		panic(exists)
+	}
+	userUUID, exists := c.Get("userUUID")
+	if !exists {
+		panic(exists)
+	}
+
+	currRequest, err := a.repo.GetRequestByID(uint(req_id), userUUID.(uuid.UUID), userRole)
+	if err != nil {
+		c.AbortWithError(http.StatusForbidden, err)
+		return
+	}
+
+	if currRequest.ClientRefer == userUUID {
+		err = a.repo.ChangeRequestStatus(uint(req_id), ds.ReqStatuses[2])
+
+		if err != nil {
+			c.Error(err)
+			return
+		}
+
+		c.String(http.StatusCreated, "Заявка удалена")
+		return
+	} else {
+		c.String(http.StatusForbidden, "Клиент не является ответственным")
+		return
+	}
 }

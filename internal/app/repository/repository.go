@@ -622,21 +622,8 @@ func (r *Repository) ChangeRequestStatus(id uint, status string) error {
 			return err
 		}
 	}
-	if status == "Оказана" {
-		passport_ids, err := r.GetPassportByRequestID(id)
-		if err != nil {
-			return err
-		} else {
-			for i := 0; i < int(len(passport_ids)); i++ {
-				err1 := r.SetIsBiometryFact(id, uint(passport_ids[i]))
-				if err1 != nil {
-					log.Println("error while inserting resource facts:", err)
-					return err1
-				}
-			}
-		}
-	}
 
+	log.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 	if status == ds.ReqStatuses[1] {
 		err := r.db.Model(&ds.BorderCrossingFacts{}).Where("id = ?", id).Update("date_processed", time.Now()).Error
 		if err != nil {
@@ -651,7 +638,20 @@ func (r *Repository) ChangeRequestStatus(id uint, status string) error {
 	if status == ds.ReqStatuses[2] || status == ds.ReqStatuses[3] {
 		err = r.DeleteBorderCrossingPassportsEvery(id)
 	}
-
+	if status == "Оказана" {
+		passport_ids, err := r.GetPassportByRequestID(id)
+		if err != nil {
+			return err
+		} else {
+			for i := 0; i < int(len(passport_ids)); i++ {
+				err1 := r.SetIsBiometryFact(id, uint(passport_ids[i]))
+				if err1 != nil {
+					log.Println("error while inserting resource facts:", err)
+					return err1
+				}
+			}
+		}
+	}
 	return nil
 }
 func (r *Repository) GetPassportByRequestID(request_id uint) ([]int, error) {
@@ -664,7 +664,7 @@ func (r *Repository) GetPassportByRequestID(request_id uint) ([]int, error) {
 func (r *Repository) SetIsBiometryFact(reguest_refer, passport_refer uint) error {
 	url := "http://127.0.0.1:4000"
 
-	authKey := "secret-async-passports"
+	//authKey := "secret-async-passports"
 
 	requestBody := map[string]interface{}{"request_refer": int(reguest_refer), "passport_refer": int(passport_refer)}
 	jsonData, err := json.Marshal(requestBody)
@@ -677,7 +677,7 @@ func (r *Repository) SetIsBiometryFact(reguest_refer, passport_refer uint) error
 		return err
 	}
 
-	req.Header.Set("Authorization", authKey)
+	//req.Header.Set("Authorization", authKey)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
